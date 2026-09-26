@@ -4,59 +4,62 @@ tags: [volgit, uso]
 
 # Uso
 
-Volver a [[Volgit]].
+Volver a [[Volgit]]
 
-## Qué se le puede pasar
+## Qué le puedo pasar
 
-Volgit recibe un único argumento, el **objetivo**, y deduce de qué se trata:
+Volgit recibe una sola cosa y él solito deduce qué es:
 
-| Escribes | Volgit entiende |
-|---|---|
-| `sharkdp/bat` | Repositorio |
-| `https://github.com/sharkdp/bat` o `.git` | Repositorio |
-| `git@github.com:sharkdp/bat.git` | Repositorio (formato SSH) |
-| `@BurntSushi` | Usuario |
-| `rust-lang` (sin `/`) | Usuario u organización |
-| `https://github.com/torvalds` | Usuario |
-| *(nada)* | El repo del directorio actual, leyendo `git remote get-url origin` |
-| `help` | La ayuda. Para consultar un usuario llamado "help", escribe `@help` |
+```bash
+volgit sharkdp/bat                        # un repo
+volgit https://github.com/sharkdp/bat     # también con URL, con o sin .git
+volgit git@github.com:sharkdp/bat.git     # o en formato SSH
+volgit @BurntSushi                        # un usuario
+volgit rust-lang                          # sin barra también lo toma como usuario u organización
+volgit https://github.com/torvalds        # perfil por URL
+volgit                                    # el repo de la carpeta en la que estoy (su remote origin)
+volgit help                               # la ayuda
+```
 
-La lógica que lo decide está explicada en [[Arquitectura#Decidir si es repo o usuario]].
+Lo de `help` tiene una pega tonta: si algún día quiero ver a un usuario que se llame literalmente "help", tengo que escribir `@help`.
+
+Cómo decide si es repo o usuario lo tengo explicado en [[Arquitectura#Decidir si es repo o usuario]].
 
 ## Opciones
 
-| Opción | Efecto |
+| Opción | Qué hace |
 |---|---|
-| `-t, --top N` o `--top all` | Cuántos contribuidores o repos mostrar (por defecto 5). `all` muestra todos: hasta 500 repos sin forks y 100 contribuidores |
-| `-p, --panel` | Panel de contribuciones del último año (los cuadraditos verdes). Solo usuarios; requiere token |
-| `--json` | Vuelca todos los datos en JSON, útil para `jq` y scripts |
-| `--no-color` | Sin colores y sin foto |
+| `-t N` / `--top N` | Cuántos repos o contribuidores enseña (5 por defecto) |
+| `--top all` | Todos. Como mucho 500 repos (sin forks) y 100 contribuidores |
+| `-p` / `--panel` | El panel de cuadraditos verdes de contribuciones. Solo usuarios y necesita token |
+| `--image MODO` | Cómo pinta la foto: `auto`, `kitty` o `blocks` |
+| `--avatar-size N` | Ancho de la foto en columnas, de 8 a 80 (28 por defecto) |
 | `--no-avatar` | Sin foto |
-| `--avatar-size N` | Ancho de la foto en columnas, de 8 a 80 (por defecto 28) |
-| `--token TOKEN` | Token de GitHub. Si no se indica, se lee `GITHUB_TOKEN` |
-| `-h, --help` / `help` | Ayuda con ejemplos |
-| `-V, --version` | Versión |
+| `--no-color` | Sin colores (y sin foto) |
+| `--json` | Suelta todos los datos en JSON, para usarlo con `jq` o en scripts |
+| `--token TOKEN` | El token. Si no lo pongo, lo coge de `GITHUB_TOKEN` |
+| `-V` | La versión |
 
-La foto se omite automáticamente cuando la salida no va a una terminal, por ejemplo `volgit x/y > archivo.txt`. Así el archivo no se llena de códigos de color.
+Sobre `--image`: en `auto` usa la imagen de verdad si detecta kitty (o Ghostty o WezTerm) y los bloques de colores en cualquier otra terminal. Dentro de tmux siempre bloques, porque tmux no deja pasar las imágenes. Más detalles en [[Foto de perfil]].
 
-## El token de GitHub
+Si mando la salida a un archivo (`volgit x/y > algo.txt`), la foto no sale. Así el archivo no se llena de basura de códigos de color.
 
-| | Peticiones por hora |
-|---|---|
-| Sin token | 60 por IP |
-| Con token | 5000 |
+## El token
 
-Un perfil gasta hasta 7 peticiones y un repo, 5. Sin token el límite se agota rápido. Ver [[API de GitHub#Límites]].
+Sin token GitHub solo me deja hacer 60 peticiones por hora, y un perfil ya se come hasta 7. Con token son 5000, que no se acaban nunca. Encima el panel de contribuciones directamente no funciona sin token.
 
-Para crear uno:
-1. Ve a https://github.com/settings/personal-access-tokens y crea uno de tipo *fine-grained* **sin ningún permiso**. Para leer datos públicos no hace falta ninguno.
-2. Añádelo a `~/.bashrc`:
+Cómo sacarlo:
+1. Entro en https://github.com/settings/personal-access-tokens y creo uno *fine-grained* sin marcar ningún permiso. Para leer cosas públicas no le hace falta nada.
+2. Lo meto en `~/.bashrc`:
    ```bash
    export GITHUB_TOKEN=github_pat_...
    ```
-3. Nunca lo metas dentro del proyecto, para que no acabe en git.
+3. Y nunca lo pongo dentro del proyecto, que acaba en git sin darme cuenta.
 
-## Requisitos de la terminal
+Si se me agota el límite, Volgit me dice a qué hora se reinicia. Más en [[API de GitHub#Límites]].
 
-- **Color verdadero (24 bits)** para ver bien la foto y los colores. La mayoría de terminales modernas lo soportan y lo anuncian con `COLORTERM=truecolor`. Si esa variable no está, los colores de texto se aproximan a la paleta básica.
-- Una fuente con los caracteres `▀ ▄ ━ ● ★`. Cualquier fuente moderna para programar los tiene.
+## Qué necesita la terminal
+
+- Color de 24 bits. Casi todas las terminales modernas lo tienen y lo avisan con `COLORTERM=truecolor`. Si no está esa variable, los colores del texto se ven con la paleta básica.
+- Una fuente que tenga `▀ ▄ ━ ● ★ ■`. Cualquier fuente de programar sirve.
+- Para ver la foto en alta resolución, kitty, Ghostty o WezTerm.

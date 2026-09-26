@@ -1,6 +1,7 @@
 mod avatar;
 mod github;
 mod render;
+mod term;
 
 use anyhow::{Context, Result, bail};
 use clap::{ArgAction, CommandFactory, Parser};
@@ -17,6 +18,7 @@ Ejemplos:
   volgit @BurntSushi --top 10         Más repos y más actividad
   volgit @BurntSushi --top all        Todos sus repos (sin forks)
   volgit @BurntSushi --panel          Con el panel de contribuciones
+  volgit @BurntSushi --image blocks   Foto con bloques aunque estés en kitty
   volgit sharkdp/bat --json | jq .    Datos en JSON para scripts
 
 Límite de la API:
@@ -60,6 +62,10 @@ struct Cli {
     /// Muestra el panel de contribuciones del último año (solo usuarios, requiere token)
     #[arg(short, long)]
     panel: bool,
+
+    /// Cómo dibujar la foto: auto (kitty si la terminal lo soporta), kitty o blocks
+    #[arg(long, value_enum, default_value = "auto", value_name = "MODO", hide_possible_values = true, hide_default_value = true)]
+    image: ImageArg,
 
     /// Ancho de la foto en columnas, de 8 a 80 (por defecto 28)
     #[arg(long, default_value_t = 28, value_name = "N", hide_default_value = true, value_parser = clap::value_parser!(u16).range(8..=80))]
@@ -106,11 +112,34 @@ fn parse_user(s: &str) -> Option<String> {
     (!s.is_empty() && !s.contains(['/', ':'])).then(|| s.to_string())
 }
 
-/// Descarga y convierte la foto. GitHub acepta `s=` para pedirla ya reducida.
-fn load_avatar(gh: &github::GitHub, url: &str, cols: usize) -> Option<avatar::Avatar> {
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum ImageArg {
+    Auto,
+    Kitty,
+    Blocks,
+}
+
+impl ImageArg {
+    fn resolve(self) -> avatar::Mode {
+        match self {
+            ImageArg::Kitty => avatar::Mode::Kitty,
+            ImageArg::Blocks => avatar::Mode::Blocks,
+            ImageArg::Auto if term::supports_kitty_graphics() => avatar::Mode::Kitty,
+            ImageArg::Auto => avatar::Mode::Blocks,
+        }
+    }
+}
+
+/// Descarga y convierte la foto. GitHub acepta `s=` para pedirla ya al tamaño
+/// justo: pequeña para los bloques, a buena resolución para kitty.
+fn load_avatar(gh: &github::GitHub, url: &str, cols: usize, mode: avatar::Mode) -> Option<avatar::Avatar> {
+    let px = match mode {
+        avatar::Mode::Blocks => cols * 4,
+        avatar::Mode::Kitty => 460,
+    };
     let sep = if url.contains('?') { '&' } else { '?' };
-    let bytes = gh.download(&format!("{url}{sep}s={}", cols * 4))?;
-    avatar::Avatar::from_bytes(&bytes, cols)
+    let bytes = gh.download(&format!("{url}{sep}s={px}"))?;
+    avatar::Avatar::from_bytes(&bytes, cols, mode)
 }
 
 fn origin_remote() -> Result<String> {
@@ -151,6 +180,7 @@ fn main() -> Result<()> {
     // La foto va con códigos ANSI crudos: solo tiene sentido en una terminal con color.
     let show_avatar = !cli.json && !cli.no_avatar && !cli.no_color && std::io::stdout().is_terminal();
     let cols = cli.avatar_size as usize;
+    let mode = cli.image.resolve();
 
     // "@usuario" o un nombre sin "/" → perfil de usuario/organización.
     if let Some(login) = parse_user(&input) {
@@ -168,7 +198,7 @@ fn main() -> Result<()> {
         if cli.json {
             println!("{}", serde_json::to_string_pretty(&report)?);
         } else {
-            let avatar = show_avatar.then(|| load_avatar(&gh, &report.user.avatar_url, cols)).flatten();
+            let avatar = show_avatar.then(|| load_avatar(&gh, &report.user.avatar_url, cols, mode)).flatten();
             render::print_user(&report, avatar.as_ref(), cli.top);
         }
         return Ok(());
@@ -180,7 +210,7 @@ fn main() -> Result<()> {
     if cli.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
-        let avatar = show_avatar.then(|| load_avatar(&gh, &report.repo.owner.avatar_url, cols)).flatten();
+        let avatar = show_avatar.then(|| load_avatar(&gh, &report.repo.owner.avatar_url, cols, mode)).flatten();
         render::print(&report, avatar.as_ref());
     }
     Ok(())

@@ -1,10 +1,27 @@
-//! Renderiza una imagen en la terminal con medios bloques (▀): cada celda
-//! pinta dos píxeles, el de arriba como color de texto y el de abajo como fondo.
+//! Dibuja la foto de perfil en la terminal. Dos modos:
+//! - Bloques: medios bloques (▀), cada celda pinta dos píxeles. Funciona en
+//!   cualquier terminal con color verdadero, pero se ve pixelado.
+//! - Kitty: se envía la imagen real (PNG) con el protocolo gráfico de kitty,
+//!   que también entienden Ghostty y WezTerm.
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use image::imageops::FilterType;
-use image::{Rgba, RgbaImage};
+use image::{ImageFormat, Rgba, RgbaImage};
+use std::io::Cursor;
 
 pub type Rgb = (u8, u8, u8);
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Mode {
+    /// Imagen real con el protocolo gráfico de kitty.
+    Kitty,
+    /// Medios bloques de colores (cualquier terminal).
+    Blocks,
+}
+
+/// Radio de las esquinas redondeadas, en proporción al lado de la imagen.
+const CORNER: f32 = 0.22;
 
 pub struct Avatar {
     /// Una línea por fila de celdas, ya con códigos ANSI.
@@ -16,12 +33,19 @@ pub struct Avatar {
 }
 
 impl Avatar {
-    pub fn from_bytes(bytes: &[u8], cols: usize) -> Option<Self> {
+    pub fn from_bytes(bytes: &[u8], cols: usize, mode: Mode) -> Option<Self> {
         let img = image::load_from_memory(bytes).ok()?.to_rgba8();
+        match mode {
+            Mode::Blocks => Some(Self::blocks(&img, cols)),
+            Mode::Kitty => Self::kitty(&img, cols),
+        }
+    }
+
+    fn blocks(img: &RgbaImage, cols: usize) -> Self {
         let size = cols as u32;
         // Lanczos3 conserva mejor los detalles al reducir tanto la imagen.
-        let mut img = image::imageops::resize(&img, size, size, FilterType::Lanczos3);
-        round_corners(&mut img, size as f32 * 0.22);
+        let mut img = image::imageops::resize(img, size, size, FilterType::Lanczos3);
+        round_corners(&mut img, size as f32 * CORNER);
 
         let mut lines = Vec::with_capacity(cols / 2 + 1);
         for y in (0..size).step_by(2) {
@@ -34,8 +58,57 @@ impl Avatar {
             line += "\x1b[0m";
             lines.push(line);
         }
-        Some(Self { lines, width: cols, accent: accent(&img) })
+        Self { lines, width: cols, accent: accent(&img) }
     }
+
+    /// La imagen ocupa `cols` columnas y las filas que hagan falta para que
+    /// salga cuadrada. Se coloca en la primera línea y el resto son espacios
+    /// que reservan su hueco para que el texto de al lado no la pise.
+    fn kitty(img: &RgbaImage, cols: usize) -> Option<Self> {
+        let rows = ((cols as f32 * crate::term::cell_aspect()).round() as usize).max(1);
+
+        let side = img.width().min(img.height()).min(512);
+        let mut img = image::imageops::resize(img, side, side, FilterType::Lanczos3);
+        round_corners(&mut img, side as f32 * CORNER);
+        let accent = accent(&img);
+
+        let mut png = Vec::new();
+        img.write_to(&mut Cursor::new(&mut png), ImageFormat::Png).ok()?;
+
+        let blank = " ".repeat(cols);
+        let mut lines = vec![blank.clone(); rows];
+        lines[0] = format!("{}{blank}", kitty_escape(&png, cols, rows));
+        Some(Self { lines, width: cols, accent })
+    }
+}
+
+/// Secuencia del protocolo gráfico de kitty para mostrar un PNG:
+/// `ESC _G <claves> ; <base64> ESC \`. Claves usadas:
+/// - a=T: transmitir y mostrar a la vez
+/// - f=100: los datos son un PNG
+/// - c, r: tamaño en columnas y filas (kitty escala la imagen a ese hueco)
+/// - C=1: no mover el cursor, para seguir escribiendo el texto de al lado
+/// - q=2: que la terminal no responda (si no, su "OK" aparecería en la shell)
+/// - m=1/0: quedan más trozos / último trozo
+///
+/// El base64 se parte en trozos de 4096 bytes como pide el protocolo; solo el
+/// primero lleva todas las claves.
+fn kitty_escape(png: &[u8], cols: usize, rows: usize) -> String {
+    let data = BASE64.encode(png);
+    let chunks: Vec<&[u8]> = data.as_bytes().chunks(4096).collect();
+    let mut out = String::with_capacity(data.len() + chunks.len() * 24);
+    for (i, chunk) in chunks.iter().enumerate() {
+        let more = u8::from(i + 1 < chunks.len());
+        if i == 0 {
+            out += &format!("\x1b_Ga=T,f=100,c={cols},r={rows},C=1,q=2,m={more};");
+        } else {
+            out += &format!("\x1b_Gm={more},q=2;");
+        }
+        // El base64 siempre es ASCII, así que cada trozo es UTF-8 válido.
+        out += std::str::from_utf8(chunk).unwrap_or_default();
+        out += "\x1b\\";
+    }
+    out
 }
 
 fn visible(p: &Rgba<u8>) -> bool {
@@ -56,15 +129,18 @@ fn cell(top: &Rgba<u8>, bottom: Option<&Rgba<u8>>) -> String {
 }
 
 /// Hace transparentes las esquinas para dar un cuadrado redondeado.
+/// El borde se suaviza (antialiasing): los píxeles que el arco corta por la
+/// mitad quedan semitransparentes en vez de todo o nada.
 fn round_corners(img: &mut RgbaImage, r: f32) {
     let (w, h) = (img.width() as f32, img.height() as f32);
     for (x, y, p) in img.enumerate_pixels_mut() {
         let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
         let cx = px.clamp(r, w - r);
         let cy = py.clamp(r, h - r);
-        if (px - cx).powi(2) + (py - cy).powi(2) > r * r {
-            p[3] = 0;
-        }
+        let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
+        // dist <= r - 0.5 → opaco; dist >= r + 0.5 → transparente; entre medias, gradiente.
+        let coverage = (r + 0.5 - dist).clamp(0.0, 1.0);
+        p[3] = (p[3] as f32 * coverage) as u8;
     }
 }
 

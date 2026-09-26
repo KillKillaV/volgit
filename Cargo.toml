@@ -1,10 +1,11 @@
 [package]
 name = "volgit"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
+base64 = "0.23.1"
 chrono = "0.4.45"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 colored = "3.1.1"

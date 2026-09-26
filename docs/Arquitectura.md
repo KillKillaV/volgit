@@ -4,55 +4,55 @@ tags: [volgit, arquitectura]
 
 # Arquitectura
 
-Volver a [[Volgit]].
+Volver a [[Volgit]]
 
-## Flujo de un comando
+## Qué pasa cuando ejecuto un comando
 
 ```mermaid
 flowchart TD
-    A[Argumentos de la terminal] --> B[clap: struct Cli]
-    B --> C{¿Qué es el objetivo?}
+    A[Argumentos] --> B[clap los mete en struct Cli]
+    B --> C{¿Qué es?}
     C -- "@usuario / nombre" --> D[GitHub::user_report]
     C -- "owner/repo / URL" --> E[GitHub::report]
     C -- nada --> F[git remote get-url origin] --> C
     D --> G{¿--json?}
     E --> G
-    G -- sí --> H[serde_json → stdout]
-    G -- no --> I[Descargar avatar → Avatar::from_bytes]
+    G -- sí --> H[JSON por pantalla]
+    G -- no --> I[Bajar la foto y convertirla]
     I --> J[render::print / print_user]
 ```
 
-## Responsabilidad de cada archivo
+## Para qué sirve cada archivo
 
-**`main.rs`** hace de orquestador: no sabe nada de HTTP ni de colores. Lee los argumentos, decide qué hay que consultar, llama a `github.rs`, decide si mostrar la foto y le pasa todo a `render.rs`.
+Lo separé así para que cada parte haga una sola cosa:
 
-**`github.rs`** contiene los datos y la red. Define structs (`Repo`, `User`, `Event`…) con la misma forma que el JSON de GitHub, y un cliente con una función genérica `get` que usan todas las consultas. Ver [[API de GitHub]].
+- `main.rs` es el que manda. No sabe nada de HTTP ni de colores: lee los argumentos, decide qué hay que consultar, pide los datos, decide si hay foto y se lo pasa todo al render.
+- `github.rs` habla con GitHub. Tiene los structs con la misma forma que el JSON que devuelve la API y una función `get` que usan todas las consultas. Ver [[API de GitHub]].
+- `avatar.rs` convierte la foto en algo que la terminal pueda enseñar. Ver [[Foto de perfil]].
+- `term.rs` le pregunta cosas a la terminal: cuánto mide, qué proporción tienen sus celdas y si soporta imágenes.
+- `render.rs` pinta. Recibe los datos ya descargados y no hace ninguna petición. Ver [[Renderizado]].
 
-**`avatar.rs`** se ocupa de la imagen: convierte los bytes de una imagen en líneas de texto con color y calcula el color de acento. Ver [[Foto de perfil]].
+La ventaja es que `--json` usa exactamente los mismos datos sin tocar nada del render, y que el render se puede testear sin internet.
 
-**`render.rs`** se ocupa de la presentación: maqueta y pinta. Recibe los datos ya descargados y no hace ninguna petición. Ver [[Renderizado]].
+## La CLI con clap
 
-Separarlo así permite, por ejemplo, que `--json` reutilice exactamente los mismos datos sin tocar `render.rs`. También permite testear el render sin red.
-
-## Definir la CLI con clap
-
-`clap` genera el parser de argumentos a partir de un struct. Cada campo es una opción y el comentario `///` de encima es el texto de la ayuda:
+`clap` construye todo el parser a partir de un struct. Cada campo es una opción, y el comentario `///` que lleva encima es lo que sale en `--help`:
 
 ```rust
 #[derive(Parser)]
 #[command(
     version,
     about,
-    after_help = EXAMPLES,          // bloque de ejemplos al final de --help
-    disable_help_flag = true,       // quitamos el -h de serie (sale en inglés)...
+    after_help = EXAMPLES,          // los ejemplos del final de --help
+    disable_help_flag = true,       // quito el -h que viene de serie porque sale en inglés
     disable_version_flag = true,
-    next_help_heading = "Opciones", // ...y traducimos los títulos
+    next_help_heading = "Opciones",
     override_usage = "volgit [OPCIONES] [OBJETIVO]",
     help_template = "{name} {version}\n{about}\n\nUso: {usage}\n\n{all-args}{after-help}",
 )]
 struct Cli {
-    /// Cuántos contribuidores / repos destacados mostrar (por defecto 5)
-    #[arg(short, long, default_value_t = 5, value_name = "N", hide_default_value = true)]
+    /// Cuántos contribuidores / repos mostrar, o "all" para todos (por defecto 5)
+    #[arg(short, long, default_value = "5", value_name = "N|all", hide_default_value = true, value_parser = parse_top)]
     top: usize,
 
     /// Token de GitHub (por defecto lee GITHUB_TOKEN)
@@ -66,60 +66,63 @@ struct Cli {
 }
 ```
 
-Detalles a tener en cuenta:
-- `env = "GITHUB_TOKEN"` hace que, si no pasas `--token`, clap lea la variable de entorno. `hide_env_values` evita que el token aparezca impreso en la ayuda.
-- `Option<String>` significa que la opción es opcional: vale `None` si no se da.
-- Para traducir `-h`, se desactiva el flag de serie y se declara uno propio con `ArgAction::Help`.
-- El rango de `--avatar-size` lo valida clap con `value_parser!(u16).range(8..=80)`. Un `3` se rechaza antes de llegar a nuestro código.
+Cosas que aprendí montando esto:
+- Con `env = "GITHUB_TOKEN"`, si no paso `--token` clap lee la variable de entorno él solo. `hide_env_values` sirve para que el token no se imprima en la ayuda.
+- Un `Option<String>` es una opción que puede no estar: vale `None` si no la paso.
+- Para tener el `-h` en español hay que desactivar el de serie y declarar uno propio con `ArgAction::Help`.
+- `--avatar-size` lo valida clap con `value_parser!(u16).range(8..=80)`. Si pongo un 3 lo rechaza antes de que llegue a mi código.
+- `--top` acepta un número o `all`. Para eso le paso mi propia función, `parse_top`, que convierte `all` en `usize::MAX`, o sea, "sin límite".
 
 ## Decidir si es repo o usuario
 
-Hay dos funciones puras, sin red, y ambas tienen tests en `main.rs`:
+Son dos funciones que no tocan la red, así que les hice tests en `main.rs`. Primero se prueba con `parse_user`:
 
 ```rust
 /// Acepta "@login", "login" o "https://github.com/login".
 fn parse_user(s: &str) -> Option<String> {
     let s = s.trim().trim_end_matches('/');
-    // Si hay "github.com/", nos quedamos con lo que va detrás.
+    // Si hay "github.com/", me quedo con lo que va detrás.
     let s = s.split_once("github.com/").map(|(_, r)| r).unwrap_or(s);
     let s = s.strip_prefix('@').unwrap_or(s);
-    // Es usuario solo si no queda ninguna "/" (eso sería owner/repo)
-    // ni ":" (formato SSH git@github.com:o/r).
+    // Solo es usuario si no queda ninguna "/" (eso sería owner/repo)
+    // ni ":" (el formato SSH git@github.com:o/r).
     (!s.is_empty() && !s.contains(['/', ':'])).then(|| s.to_string())
 }
 ```
 
-`condición.then(|| valor)` es la forma idiomática de decir "si la condición es cierta, `Some(valor)`, si no, `None`".
+El `.then(|| ...)` del final es la forma bonita de escribir "si la condición se cumple, `Some(valor)`, y si no, `None`".
 
-`main` prueba primero `parse_user`. Si devuelve `None`, prueba `parse_slug`:
+Si eso devuelve `None`, se prueba con `parse_slug`:
 
 ```rust
 fn parse_slug(s: &str) -> Option<(String, String)> {
     let s = s.trim().trim_end_matches('/').trim_end_matches(".git");
-    // Cubre "https://github.com/o/r" y "git@github.com:o/r" a la vez:
-    // cortamos por "github.com" y quitamos los ':' o '/' que quedan delante.
+    // Esto cubre "https://github.com/o/r" y "git@github.com:o/r" de una vez:
+    // corto por "github.com" y quito los ':' o '/' que se quedan delante.
     let s = s
         .split_once("github.com")
         .map(|(_, rest)| rest.trim_start_matches([':', '/']))
         .unwrap_or(s);
     let mut parts = s.split('/');
-    // El `?` sale devolviendo None si no hay dos partes.
+    // El `?` hace que la función devuelva None si no hay dos trozos.
     let (owner, name) = (parts.next()?, parts.next()?);
     (!owner.is_empty() && !name.is_empty()).then(|| (owner.into(), name.into()))
 }
 ```
 
-Como solo se leen las dos primeras partes, una URL como `github.com/o/r/tree/main/src` también funciona.
+Como solo miro los dos primeros trozos, una URL larga del estilo `github.com/o/r/tree/main/src` también funciona.
 
-## Cuándo se muestra la foto
+## Cuándo sale la foto
 
 ```rust
 let show_avatar = !cli.json && !cli.no_avatar && !cli.no_color && std::io::stdout().is_terminal();
 ```
 
-La foto se imprime con códigos ANSI "a mano" (ver [[Foto de perfil]]), así que no la controla la librería de colores. Por eso hay que comprobar explícitamente que la salida es una terminal.
+La foto la imprimo con códigos de escape a mano (ver [[Foto de perfil]]), así que la librería de colores no se entera de que existe. Por eso compruebo yo que la salida va a una terminal de verdad y no a un archivo.
 
-## SIGPIPE y unsafe
+Qué modo usar (bloques o kitty) lo decide `ImageArg::resolve`. Si es `auto`, pregunta a `term::supports_kitty_graphics()`, que mira variables como `TERM`, `KITTY_WINDOW_ID` o `TERM_PROGRAM`, y descarta tmux.
+
+## SIGPIPE y el único unsafe de main
 
 ```rust
 #[cfg(unix)]
@@ -128,9 +131,9 @@ unsafe {
 }
 ```
 
-Con `volgit x | head -3`, `head` cierra la tubería tras 3 líneas. Los programas de Unix reciben la señal SIGPIPE y terminan en silencio, pero Rust la ignora por defecto. Eso convierte la siguiente escritura en un error, y `println!` hace un *panic* con "Broken pipe". Esta línea restaura el comportamiento clásico.
+Esto lo metí porque con `volgit x | head -3` el programa petaba con un "Broken pipe". Lo que pasa es que `head` cierra la tubería después de leer 3 líneas. Un programa normal de Unix recibe entonces la señal SIGPIPE y se muere sin decir nada, pero Rust ignora esa señal por defecto, así que la siguiente escritura falla y `println!` hace *panic*. Con esta línea vuelve el comportamiento de toda la vida.
 
-- Es `unsafe` porque llama a una función de C a la que Rust no puede garantizar nada.
-- `#[cfg(unix)]` hace que solo se compile en Linux o macOS: en Windows no existe SIGPIPE.
+- Va dentro de `unsafe` porque llama a una función de C y Rust no puede garantizar nada de ella.
+- `#[cfg(unix)]` hace que solo se compile en Linux o macOS, porque en Windows no existe SIGPIPE.
 
 Relacionado: [[Rust en Volgit#unsafe y cfg]].

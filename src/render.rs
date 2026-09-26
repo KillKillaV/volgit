@@ -351,25 +351,12 @@ fn thousands(n: u64) -> String {
     out
 }
 
-/// Ancho de la terminal en columnas. Pregunta al sistema (ioctl) y, si no
-/// puede (salida redirigida), prueba $COLUMNS y si no asume 120.
-fn term_width() -> usize {
-    #[cfg(unix)]
-    unsafe {
-        let mut ws: libc::winsize = std::mem::zeroed();
-        if libc::ioctl(libc::STDOUT_FILENO, libc::TIOCGWINSZ, &mut ws) == 0 && ws.ws_col > 0 {
-            return ws.ws_col as usize;
-        }
-    }
-    std::env::var("COLUMNS").ok().and_then(|c| c.parse().ok()).unwrap_or(120)
-}
-
 /// El panel de cuadraditos de GitHub: una columna por semana, una fila por día.
 fn calendar(t: &Theme, c: &Contributions) {
     let cal = &c.contribution_calendar;
     // Cada semana ocupa 2 columnas ("■ "). Si la terminal es estrecha,
     // mostramos solo las semanas más recientes que quepan.
-    let fit = term_width().saturating_sub(MARGIN.len() + CAL_LABEL_W) / 2;
+    let fit = crate::term::width().saturating_sub(MARGIN.len() + CAL_LABEL_W) / 2;
     let weeks = &cal.weeks[cal.weeks.len().saturating_sub(fit)..];
     if weeks.is_empty() {
         return;
@@ -552,26 +539,12 @@ fn describe(e: &Event) -> Option<(&'static str, String)> {
         "PullRequestEvent" => {
             let merged = action == "closed" && p["pull_request"]["merged"].as_bool() == Some(true);
             let tag = if merged { "merge" } else { "pr" };
-            let verb = match action {
-                "opened" => "abre: ",
-                "closed" if !merged => "cierra: ",
-                "reopened" => "reabre: ",
-                _ => "",
-            };
-            (tag, format!("{verb}{}", s(&p["pull_request"]["title"])))
+            (tag, with_verb(verb(action, merged), &title(&p["pull_request"], p)))
         }
-        "IssuesEvent" => {
-            let verb = match action {
-                "opened" => "abre: ",
-                "closed" => "cierra: ",
-                "reopened" => "reabre: ",
-                _ => "",
-            };
-            ("issue", format!("{verb}{}", s(&p["issue"]["title"])))
-        }
-        "IssueCommentEvent" => ("comenta", s(&p["issue"]["title"])),
-        "PullRequestReviewEvent" => ("revisa", s(&p["pull_request"]["title"])),
-        "PullRequestReviewCommentEvent" => ("revisa", s(&p["pull_request"]["title"])),
+        "IssuesEvent" => ("issue", with_verb(verb(action, false), &title(&p["issue"], p))),
+        "IssueCommentEvent" => ("comenta", title(&p["issue"], p)),
+        "PullRequestReviewEvent" => ("revisa", title(&p["pull_request"], p)),
+        "PullRequestReviewCommentEvent" => ("revisa", title(&p["pull_request"], p)),
         "CreateEvent" => match p["ref_type"].as_str() {
             Some("repository") => ("crea", "repositorio nuevo".into()),
             Some(kind) => ("crea", format!("{kind} {}", s(&p["ref"]))),
@@ -584,6 +557,37 @@ fn describe(e: &Event) -> Option<(&'static str, String)> {
         "PublicEvent" => ("publica", String::new()),
         _ => return None,
     })
+}
+
+fn verb(action: &str, merged: bool) -> &'static str {
+    match action {
+        "opened" => "abre",
+        "closed" if !merged => "cierra",
+        "reopened" => "reabre",
+        _ => "",
+    }
+}
+
+/// Título de un PR/issue. GitHub a veces lo omite en los eventos; entonces
+/// usamos su número ("#123").
+fn title(item: &serde_json::Value, payload: &serde_json::Value) -> String {
+    if let Some(t) = item["title"].as_str().filter(|t| !t.is_empty()) {
+        return t.to_string();
+    }
+    item["number"]
+        .as_u64()
+        .or_else(|| payload["number"].as_u64())
+        .map_or(String::new(), |n| format!("#{n}"))
+}
+
+/// "abre" + "Arregla X" → "abre: Arregla X"; "abre" + "#12" → "abre #12".
+fn with_verb(verb: &str, title: &str) -> String {
+    match (verb, title) {
+        ("", t) => t.to_string(),
+        (v, "") => v.to_string(),
+        (v, t) if t.starts_with('#') => format!("{v} {t}"),
+        (v, t) => format!("{v}: {t}"),
+    }
 }
 
 fn tag_color(tag: &str) -> ColoredString {
