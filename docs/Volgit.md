@@ -23,6 +23,8 @@ src/
 ├── github.rs   el cliente de la API y los structs con los datos
 ├── avatar.rs   la foto: bloques de colores o imagen real para kitty
 ├── term.rs     preguntas a la terminal: ancho, tamaño de celda, si soporta imágenes
+├── config.rs   el archivo ~/.config/volgit/config.toml
+├── cache.rs    la caché en disco de las respuestas y las fotos
 └── render.rs   todo lo que se imprime
 ```
 

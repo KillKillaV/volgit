@@ -173,6 +173,6 @@ repos.sort_by(|a, b| b.stargazers_count.cmp(&a.stargazers_count)); // b contra a
 | Con token | 5000 por hora |
 | Buscador | 10 por minuto sin token, 30 con token |
 
-Cosas que me gustaría hacer algún día:
-- Una caché local para que repetir una consulta no gaste peticiones.
-- Pasar todo a GraphQL para bajar de 7 peticiones a 1 o 2.
+Desde que tengo la caché (`src/cache.rs`), repetir una consulta en menos de 10 minutos no gasta ninguna petición. Guardo el JSON tal cual con la URL como clave, y los 404 como `null`, para que tampoco se vuelvan a pedir. El calendario de GraphQL va por POST, así que su clave es `graphql:contributions:<usuario>`.
+
+Cosa que me gustaría hacer algún día: pasar todo a GraphQL para bajar de 7 peticiones a 1 o 2.

@@ -1,3 +1,4 @@
+use crate::cache::Cache;
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Local};
 use reqwest::blocking::Client;
@@ -190,32 +191,43 @@ pub struct UserReport {
 pub struct GitHub {
     client: Client,
     token: Option<String>,
+    cache: Option<Cache>,
 }
 
 impl GitHub {
-    pub fn new(token: Option<String>) -> Result<Self> {
+    pub fn new(token: Option<String>, cache: Option<Cache>) -> Result<Self> {
         let client = Client::builder()
             .user_agent(concat!("volgit/", env!("CARGO_PKG_VERSION")))
             .build()?;
-        Ok(Self { client, token })
+        Ok(Self { client, token, cache })
     }
 
     /// GET a la API. Devuelve Ok(None) en 404 (p.ej. repo sin releases).
     fn get<T: DeserializeOwned>(&self, path: &str) -> Result<Option<T>> {
-        let mut req = self
-            .client
-            .get(format!("{API}{path}"))
-            .header("Accept", "application/vnd.github+json");
+        let url = format!("{API}{path}");
+        // En caché se guarda el JSON tal cual, o "null" para los 404, así que se
+        // lee como Option<T>. Si no se puede leer (p.ej. formato viejo), a la red.
+        if let Some(body) = self.cache.as_ref().and_then(|c| c.get(&url))
+            && let Ok(value) = serde_json::from_slice::<Option<T>>(&body)
+        {
+            return Ok(value);
+        }
+
+        let mut req = self.client.get(&url).header("Accept", "application/vnd.github+json");
         if let Some(t) = &self.token {
             req = req.bearer_auth(t);
         }
         let resp = req.send().with_context(|| format!("network error on {path}"))?;
         let status = resp.status();
         if status == StatusCode::NOT_FOUND {
+            self.store(&url, b"null");
             return Ok(None);
         }
         if status.is_success() {
-            return Ok(Some(resp.json()?));
+            let body = resp.bytes()?;
+            let value = serde_json::from_slice(&body)?;
+            self.store(&url, &body);
+            return Ok(Some(value));
         }
 
         // Un 403 no siempre es el límite: GitHub también lo usa p.ej. cuando la
@@ -240,6 +252,12 @@ impl GitHub {
         bail!("GitHub returned {status} on {path}: {msg}")
     }
 
+    fn store(&self, key: &str, body: &[u8]) {
+        if let Some(c) = &self.cache {
+            c.put(key, body);
+        }
+    }
+
     pub fn has_token(&self) -> bool {
         self.token.is_some()
     }
@@ -248,20 +266,36 @@ impl GitHub {
     /// una organización o si falla: es una sección opcional.
     pub fn contributions(&self, login: &str) -> Option<Contributions> {
         let token = self.token.as_ref()?;
+        // GraphQL va por POST, así que la clave de caché no puede ser la URL.
+        let key = format!("graphql:contributions:{login}");
+        if let Some(body) = self.cache.as_ref().and_then(|c| c.get(&key))
+            && let Ok(c) = serde_json::from_slice(&body)
+        {
+            return Some(c);
+        }
         let body = serde_json::json!({ "query": CONTRIBUTIONS_QUERY, "variables": { "login": login } });
         let resp = self.client.post(format!("{API}/graphql")).bearer_auth(token).json(&body).send().ok()?;
         let mut json: serde_json::Value = resp.json().ok()?;
         let collection = json.pointer_mut("/data/user/contributionsCollection")?.take();
-        serde_json::from_value(collection).ok()
+        let contributions: Contributions = serde_json::from_value(collection).ok()?;
+        if let Ok(bytes) = serde_json::to_vec(&contributions) {
+            self.store(&key, &bytes);
+        }
+        Some(contributions)
     }
 
     /// Descarga una imagen (avatar). Los fallos se ignoran: la foto es opcional.
     pub fn download(&self, url: &str) -> Option<Vec<u8>> {
+        if let Some(bytes) = self.cache.as_ref().and_then(|c| c.get(url)) {
+            return Some(bytes);
+        }
         let resp = self.client.get(url).send().ok()?;
         if !resp.status().is_success() {
             return None;
         }
-        Some(resp.bytes().ok()?.to_vec())
+        let bytes = resp.bytes().ok()?.to_vec();
+        self.store(url, &bytes);
+        Some(bytes)
     }
 
     pub fn report(&self, owner: &str, name: &str, top: usize) -> Result<Report> {

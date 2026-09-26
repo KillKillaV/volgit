@@ -39,6 +39,10 @@ Cómo decide si es repo o usuario lo tengo explicado en [[Arquitectura#Decidir s
 | `--no-avatar` | Sin foto |
 | `--no-color` | Sin colores (y sin foto) |
 | `--json` | Suelta todos los datos en JSON, para usarlo con `jq` o en scripts |
+| `--no-cache` | Pide todo nuevo a GitHub, sin mirar la caché |
+| `--no-config` | Ignora el archivo de configuración |
+| `--init-config` | Crea el archivo de configuración con una plantilla |
+| `--completions SHELL` | Saca el script de autocompletado para bash, zsh o fish |
 | `--token TOKEN` | El token. Si no lo pongo, lo coge de `GITHUB_TOKEN` |
 | `-V` | La versión |
 
@@ -47,6 +51,35 @@ Por defecto el perfil sale sin repos, sin actividad y sin panel: solo los datos 
 Sobre `--image`: en `auto` usa la imagen de verdad si detecta kitty (o Ghostty o WezTerm) y los bloques de colores en cualquier otra terminal. Dentro de tmux siempre bloques, porque tmux no deja pasar las imágenes. Más detalles en [[Foto de perfil]].
 
 Si mando la salida a un archivo (`volgit x/y > algo.txt`), la foto no sale. Así el archivo no se llena de basura de códigos de color.
+
+## Configuración
+
+Como repos, actividad y panel no salen por defecto, me cansé de escribir `-rap` cada vez. Para eso está `~/.config/volgit/config.toml`, donde pongo lo que quiero por defecto:
+
+```toml
+repos = true
+activity = true
+top = 5            # o "all"
+image = "auto"     # "kitty" o "blocks"
+avatar_size = 28
+cache_minutes = 10 # 0 = sin caché
+```
+
+`volgit --init-config` me lo crea con todas las opciones comentadas (y si ya existe no lo toca). Lo que escriba en la línea de comandos manda sobre el archivo, y si un día quiero verlo "de fábrica", `--no-config`. Si escribo mal una clave (`repo` en vez de `repos`), me avisa de cuál es en vez de ignorarla sin decir nada.
+
+## Caché
+
+Las respuestas de GitHub y las fotos se guardan 10 minutos en `~/.cache/volgit`. La segunda vez que miro el mismo perfil sale al momento (de unos 3 segundos a menos de 0,1) y no gasta peticiones. Si quiero datos recién sacados, `--no-cache`. Los archivos de más de un día se borran solos.
+
+## Autocompletado
+
+Para que el TAB complete las opciones (y hasta los valores de `--image`):
+
+```bash
+volgit --completions bash > ~/.local/share/bash-completion/completions/volgit
+```
+
+Para zsh y fish es igual cambiando el nombre; los comandos exactos salen en `volgit --help`.
 
 ## El token
 

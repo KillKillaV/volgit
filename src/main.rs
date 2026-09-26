@@ -1,4 +1,6 @@
 mod avatar;
+mod cache;
+mod config;
 mod github;
 mod render;
 mod term;
@@ -21,6 +23,19 @@ Examples:
   volgit @BurntSushi --panel          With the contribution graph
   volgit @BurntSushi --image blocks   Block avatar even inside kitty
   volgit sharkdp/bat --json | jq .    JSON output for scripts
+
+Config file:
+  ~/.config/volgit/config.toml sets your defaults (e.g. repos = true).
+  Create a commented template with --init-config; --no-config ignores it.
+
+Cache:
+  GitHub responses are cached for 10 minutes in ~/.cache/volgit.
+  Use --no-cache to force fresh data, or set cache_minutes in the config.
+
+Shell completions:
+  volgit --completions bash > ~/.local/share/bash-completion/completions/volgit
+  volgit --completions zsh  > ~/.zfunc/_volgit   (with ~/.zfunc in your fpath)
+  volgit --completions fish > ~/.config/fish/completions/volgit.fish
 
 API rate limit:
   Without a token GitHub allows 60 requests/hour; with one, 5000.
@@ -45,8 +60,8 @@ struct Cli {
     repo: Option<String>,
 
     /// How many contributors / repos to show, or "all" (default 5)
-    #[arg(short, long, default_value = "5", value_name = "N|all", hide_default_value = true, value_parser = parse_top)]
-    top: usize,
+    #[arg(short, long, value_name = "N|all", value_parser = parse_top)]
+    top: Option<usize>,
 
     /// JSON output (for scripts)
     #[arg(long)]
@@ -73,12 +88,28 @@ struct Cli {
     activity: bool,
 
     /// How to draw the avatar: auto (kitty if supported), kitty or blocks
-    #[arg(long, value_enum, default_value = "auto", value_name = "MODE", hide_possible_values = true, hide_default_value = true)]
-    image: ImageArg,
+    #[arg(long, value_enum, value_name = "MODE", hide_possible_values = true)]
+    image: Option<ImageArg>,
 
     /// Avatar width in columns, 8 to 80 (default 28)
-    #[arg(long, default_value_t = 28, value_name = "N", hide_default_value = true, value_parser = clap::value_parser!(u16).range(8..=80))]
-    avatar_size: u16,
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u16).range(8..=80))]
+    avatar_size: Option<u16>,
+
+    /// Always fetch fresh data, skipping the cache
+    #[arg(long)]
+    no_cache: bool,
+
+    /// Ignore the config file
+    #[arg(long)]
+    no_config: bool,
+
+    /// Create a config file template and print its path
+    #[arg(long)]
+    init_config: bool,
+
+    /// Print a completion script for your shell (bash, zsh, fish, elvish, powershell)
+    #[arg(long, value_name = "SHELL", hide_possible_values = true)]
+    completions: Option<clap_complete::Shell>,
 
     /// GitHub token (defaults to GITHUB_TOKEN)
     #[arg(long, env = "GITHUB_TOKEN", hide_env_values = true, value_name = "TOKEN")]
@@ -121,7 +152,8 @@ fn parse_user(s: &str) -> Option<String> {
     (!s.is_empty() && !s.contains(['/', ':'])).then(|| s.to_string())
 }
 
-#[derive(Clone, Copy, clap::ValueEnum)]
+#[derive(Clone, Copy, Debug, clap::ValueEnum, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 enum ImageArg {
     Auto,
     Kitty,
@@ -171,7 +203,35 @@ fn main() -> Result<()> {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
     let cli = Cli::parse();
-    if cli.no_color {
+
+    // Acciones que no consultan GitHub.
+    if let Some(shell) = cli.completions {
+        clap_complete::generate(shell, &mut Cli::command(), "volgit", &mut std::io::stdout());
+        return Ok(());
+    }
+    if cli.init_config {
+        let (path, created) = config::Config::init()?;
+        let what = if created { "created" } else { "already exists, left untouched:" };
+        println!("config file {what} {}", path.display());
+        return Ok(());
+    }
+
+    // Cada opción sale de la línea de comandos si se ha escrito; si no, del
+    // archivo de configuración; y si tampoco, del valor por defecto.
+    let cfg = if cli.no_config { config::Config::default() } else { config::Config::load()? };
+    let top = cli.top.or(cfg.top()?).unwrap_or(5);
+    let sections = github::Sections {
+        panel: cli.panel || cfg.panel,
+        repos: cli.repos || cfg.repos,
+        activity: cli.activity || cfg.activity,
+    };
+    let no_color = cli.no_color || cfg.color == Some(false);
+    let no_avatar = cli.no_avatar || cfg.avatar == Some(false);
+    let cols = cli.avatar_size.or(cfg.avatar_size).unwrap_or(28) as usize;
+    let mode = cli.image.or(cfg.image).unwrap_or(ImageArg::Auto).resolve();
+    let cache_minutes = if cli.no_cache { 0 } else { cfg.cache_minutes.unwrap_or(10) };
+
+    if no_color {
         colored::control::set_override(false);
     }
 
@@ -185,17 +245,15 @@ fn main() -> Result<()> {
         None => origin_remote()?,
     };
     // `GITHUB_TOKEN=` (vacío) cuenta como "sin token", no como token inválido.
-    let gh = github::GitHub::new(cli.token.filter(|t| !t.trim().is_empty()))?;
+    let cache = cache::Cache::new(std::time::Duration::from_secs(cache_minutes * 60));
+    let gh = github::GitHub::new(cli.token.filter(|t| !t.trim().is_empty()), cache)?;
     // La foto va con códigos ANSI crudos: solo tiene sentido en una terminal con color.
-    let show_avatar = !cli.json && !cli.no_avatar && !cli.no_color && std::io::stdout().is_terminal();
-    let cols = cli.avatar_size as usize;
-    let mode = cli.image.resolve();
+    let show_avatar = !cli.json && !no_avatar && !no_color && std::io::stdout().is_terminal();
 
     // "@usuario" o un nombre sin "/" → perfil de usuario/organización.
     if let Some(login) = parse_user(&input) {
-        let sections = github::Sections { panel: cli.panel, repos: cli.repos, activity: cli.activity };
         let report = gh.user_report(&login, sections)?;
-        if cli.panel && report.contributions.is_none() {
+        if sections.panel && report.contributions.is_none() {
             let why = if report.user.kind != "User" {
                 "organizations don't have a contribution graph"
             } else if !gh.has_token() {
@@ -209,13 +267,13 @@ fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&report)?);
         } else {
             let avatar = show_avatar.then(|| load_avatar(&gh, &report.user.avatar_url, cols, mode)).flatten();
-            render::print_user(&report, avatar.as_ref(), cli.top, sections);
+            render::print_user(&report, avatar.as_ref(), top, sections);
         }
         return Ok(());
     }
 
     let (owner, name) = parse_slug(&input).with_context(|| format!("invalid repo: {input}"))?;
-    let report = gh.report(&owner, &name, cli.top)?;
+    let report = gh.report(&owner, &name, top)?;
 
     if cli.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
