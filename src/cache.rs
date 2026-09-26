@@ -1,18 +1,18 @@
-//! Caché en disco de las respuestas de GitHub y de las fotos.
+//! On-disk cache for GitHub responses and avatars.
 //!
-//! Cada entrada es un archivo en `~/.cache/volgit/` (o `$XDG_CACHE_HOME/volgit`)
-//! cuyo nombre es un hash de la clave (normalmente la URL). Dentro va la clave
-//! en la primera línea, para descartar colisiones, y después el contenido tal
-//! cual. La caducidad se mira con la fecha de modificación del archivo.
+//! Each entry is a file in `~/.cache/volgit/` (or `$XDG_CACHE_HOME/volgit`)
+//! named after a hash of its key (usually the URL). The file holds the key on
+//! the first line, to rule out collisions, followed by the raw content.
+//! Expiry is based on the file's modification time.
 //!
-//! Es "best effort": si algo falla al leer o escribir, se ignora y se va a la
-//! red como si no hubiera caché.
+//! It is best effort: any read or write error is ignored and volgit simply
+//! goes to the network as if there were no cache.
 
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Las entradas más viejas que esto se borran al arrancar, aunque el TTL sea menor.
+/// Entries older than this are deleted on startup, even if the TTL is shorter.
 const PRUNE_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
 
 pub struct Cache {
@@ -21,7 +21,7 @@ pub struct Cache {
 }
 
 impl Cache {
-    /// None si el TTL es 0 (caché desactivada) o no se encuentra la carpeta de caché.
+    /// None if the TTL is 0 (cache disabled) or no cache directory can be found.
     pub fn new(ttl: Duration) -> Option<Self> {
         if ttl.is_zero() {
             return None;
@@ -35,7 +35,7 @@ impl Cache {
         Some(cache)
     }
 
-    /// Caché en una carpeta concreta (lo usan los tests).
+    /// Cache in a specific directory (used by tests).
     fn at(dir: PathBuf, ttl: Duration) -> Self {
         Self { dir, ttl }
     }
@@ -44,7 +44,7 @@ impl Cache {
         self.dir.join(format!("{:016x}", fnv1a(key)))
     }
 
-    /// El contenido guardado para `key`, si existe y no ha caducado.
+    /// The content stored for `key`, if present and not expired.
     pub fn get(&self, key: &str) -> Option<Vec<u8>> {
         let path = self.path(key);
         let age = fs::metadata(&path).ok()?.modified().ok()?.elapsed().ok()?;
@@ -64,8 +64,8 @@ impl Cache {
         data.extend_from_slice(key.as_bytes());
         data.push(b'\n');
         data.extend_from_slice(body);
-        // Se escribe a un temporal y se renombra: así otro volgit ejecutándose a
-        // la vez nunca lee un archivo a medio escribir.
+        // Write to a temp file and rename it, so a concurrent volgit never reads
+        // a half-written file.
         let path = self.path(key);
         let tmp = path.with_extension(format!("tmp{}", std::process::id()));
         if fs::write(&tmp, &data).is_ok() && fs::rename(&tmp, &path).is_err() {
@@ -73,7 +73,7 @@ impl Cache {
         }
     }
 
-    /// Borra las entradas muy viejas para que la carpeta no crezca sin límite.
+    /// Deletes very old entries so the directory doesn't grow forever.
     fn prune(&self) {
         let Ok(entries) = fs::read_dir(&self.dir) else { return };
         let limit = self.ttl.max(PRUNE_AFTER);
@@ -91,8 +91,8 @@ impl Cache {
     }
 }
 
-/// Hash FNV-1a de 64 bits. Se usa en vez del hasher de la librería estándar
-/// porque este da siempre el mismo resultado, en cualquier versión de Rust.
+/// 64-bit FNV-1a hash. Used instead of the standard library hasher because it
+/// always gives the same result, on any Rust version.
 fn fnv1a(s: &str) -> u64 {
     s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3))
 }
@@ -108,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn guarda_y_recupera() {
+    fn stores_and_retrieves() {
         let c = temp_cache(Duration::from_secs(60));
         assert_eq!(c.get("https://x/a"), None);
         c.put("https://x/a", b"{\"n\":1}");
@@ -118,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn caduca() {
+    fn expires() {
         let c = temp_cache(Duration::from_nanos(1));
         c.put("k", b"v");
         std::thread::sleep(Duration::from_millis(5));
@@ -127,8 +127,8 @@ mod tests {
     }
 
     #[test]
-    fn hash_estable() {
-        // Valores conocidos de FNV-1a 64: si cambian, las cachés existentes dejarían de valer.
+    fn stable_hash() {
+        // Known FNV-1a 64 values: if these changed, existing caches would become useless.
         assert_eq!(fnv1a(""), 0xcbf29ce484222325);
         assert_eq!(fnv1a("a"), 0xaf63dc4c8601ec8c);
     }

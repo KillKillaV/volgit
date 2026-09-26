@@ -1,7 +1,9 @@
 [package]
 name = "volgit"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
+license = "MIT"
+description = "Look up GitHub repositories, users and organizations from the terminal"
 
 [dependencies]
 anyhow = "1.0.104"

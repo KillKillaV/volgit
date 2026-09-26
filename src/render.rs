@@ -3,17 +3,17 @@ use crate::github::{Contributions, Event, Report, Sections, UserReport};
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use colored::{ColoredString, Colorize};
 
-const MARGIN: &str = "  ";
+pub(crate) const MARGIN: &str = "  ";
 const GAP: &str = "   ";
 const LABEL_W: usize = 12;
 const BAR_W: usize = 48;
 const TEXT_W: usize = 56;
-const DEFAULT_ACCENT: Rgb = (122, 162, 247);
+pub(crate) const DEFAULT_ACCENT: Rgb = (122, 162, 247);
 
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/// Color aproximado de GitHub linguist para los lenguajes más comunes.
-fn lang_rgb(lang: &str) -> Rgb {
+/// Approximate GitHub linguist colors for the most common languages.
+pub(crate) fn lang_rgb(lang: &str) -> Rgb {
     match lang {
         "Rust" => (222, 165, 132),
         "Python" => (53, 114, 165),
@@ -41,7 +41,7 @@ fn lang_rgb(lang: &str) -> Rgb {
         "Dockerfile" => (56, 77, 84),
         "Other" => (110, 110, 110),
         _ => {
-            // Color estable derivado del nombre para el resto.
+            // Stable color derived from the name for the rest.
             let h = lang.bytes().fold(7u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
             (100 + (h % 156) as u8, 100 + (h / 7 % 156) as u8, 100 + (h / 49 % 156) as u8)
         }
@@ -71,7 +71,7 @@ impl Theme {
     }
 }
 
-fn human(n: u64) -> String {
+pub(crate) fn human(n: u64) -> String {
     match n {
         n if n >= 1_000_000 => format!("{:.1}M", n as f64 / 1e6),
         n if n >= 1_000 => format!("{:.1}k", n as f64 / 1e3),
@@ -79,7 +79,7 @@ fn human(n: u64) -> String {
     }
 }
 
-fn relative(iso: &str) -> String {
+pub(crate) fn relative(iso: &str) -> String {
     let Ok(t) = iso.parse::<DateTime<Utc>>() else { return iso.to_string() };
     match (Utc::now() - t).num_days() {
         0 => "today".into(),
@@ -92,7 +92,7 @@ fn relative(iso: &str) -> String {
     }
 }
 
-fn month_year(iso: &str) -> String {
+pub(crate) fn month_year(iso: &str) -> String {
     match iso.parse::<DateTime<Utc>>() {
         Ok(t) => format!("{} {}", MONTHS[t.month0() as usize], t.year()),
         Err(_) => iso.to_string(),
@@ -113,7 +113,7 @@ fn strip_scheme(url: &str) -> &str {
     url.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/')
 }
 
-fn truncate(s: &str, max: usize) -> String {
+pub(crate) fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();
     }
@@ -121,7 +121,7 @@ fn truncate(s: &str, max: usize) -> String {
     format!("{}…", cut.trim_end())
 }
 
-/// Parte un texto en líneas de como mucho `width` caracteres, sin cortar palabras.
+/// Wraps text into lines of at most `width` characters without splitting words.
 fn wrap(text: &str, width: usize, max_lines: usize) -> Vec<String> {
     let mut lines: Vec<String> = vec![];
     let mut cur = String::new();
@@ -145,7 +145,7 @@ fn wrap(text: &str, width: usize, max_lines: usize) -> Vec<String> {
     lines
 }
 
-/// Imprime el avatar a la izquierda y `info` a la derecha, fila a fila.
+/// Prints the avatar on the left and `info` on the right, row by row.
 fn side_by_side(avatar: Option<&Avatar>, info: &[String]) {
     println!();
     let left = avatar.map_or(&[][..], |a| &a.lines[..]);
@@ -185,7 +185,7 @@ pub fn print(rep: &Report, avatar: Option<&Avatar>) {
     if let Some(w) = r.subscribers_count {
         info.push(t.kv("Watchers", human(w)));
     }
-    // open_issues_count de GitHub incluye PRs; si tenemos el número de PRs, lo separamos.
+    // GitHub's open_issues_count includes PRs; split them out when we know the PR count.
     match rep.open_prs {
         Some(prs) => {
             let issues = r.open_issues_count.saturating_sub(prs);
@@ -207,7 +207,7 @@ pub fn print(rep: &Report, avatar: Option<&Avatar>) {
         info.push(t.kv("Last push", relative(p)));
     }
     info.push(t.kv("Created", month_year(&r.created_at)));
-    // La API da el tamaño en KB.
+    // The API reports size in KB.
     let size = match r.size as f64 / 1024.0 {
         mb if mb >= 1024.0 => format!("{:.1} GB", mb / 1024.0),
         mb => format!("{mb:.1} MB"),
@@ -321,7 +321,7 @@ pub fn print_user(rep: &UserReport, avatar: Option<&Avatar>, top: usize, section
     println!();
 }
 
-/// Colores de GitHub en modo oscuro, de "sin contribuciones" a "máximo".
+/// GitHub dark-mode colors, from "no contributions" to "most".
 const CAL_LEVELS: [Rgb; 5] = [(45, 51, 59), (14, 68, 41), (0, 109, 50), (38, 166, 65), (57, 211, 83)];
 const CAL_LABEL_W: usize = 4;
 
@@ -340,7 +340,7 @@ fn square(level: usize) -> ColoredString {
     "■".truecolor(r, g, b)
 }
 
-/// 1297 → "1,297" (separador de miles en inglés).
+/// 1297 → "1,297" (thousands separator).
 fn thousands(n: u64) -> String {
     let digits = n.to_string();
     let mut out = String::new();
@@ -353,11 +353,11 @@ fn thousands(n: u64) -> String {
     out
 }
 
-/// El panel de cuadraditos de GitHub: una columna por semana, una fila por día.
+/// GitHub's contribution graph: one column per week, one row per day.
 fn calendar(t: &Theme, c: &Contributions) {
     let cal = &c.contribution_calendar;
-    // Cada semana ocupa 2 columnas ("■ "). Si la terminal es estrecha,
-    // mostramos solo las semanas más recientes que quepan.
+    // Each week takes 2 columns ("■ "). In a narrow terminal, only the most
+    // recent weeks that fit are shown.
     let fit = crate::term::width().saturating_sub(MARGIN.len() + CAL_LABEL_W) / 2;
     let weeks = &cal.weeks[cal.weeks.len().saturating_sub(fit)..];
     if weeks.is_empty() {
@@ -373,8 +373,8 @@ fn calendar(t: &Theme, c: &Contributions) {
         total.dimmed()
     );
 
-    // Fila de meses: la etiqueta va en la semana donde cambia el mes.
-    let mut starts: Vec<(usize, &str)> = vec![]; // (semana, mes)
+    // Month row: each label goes on the week where the month changes.
+    let mut starts: Vec<(usize, &str)> = vec![]; // (week, month)
     let mut last_month = None;
     for (i, week) in weeks.iter().enumerate() {
         let Some(first) = week.contribution_days.first() else { continue };
@@ -384,14 +384,14 @@ fn calendar(t: &Theme, c: &Contributions) {
             starts.push((i, MONTHS[date.month0() as usize]));
         }
     }
-    // Como GitHub: si el primer mes solo asoma una o dos semanas, no se etiqueta.
+    // Like GitHub: if the first month only shows for a week or two, skip its label.
     if starts.len() >= 2 && starts[1].0 - starts[0].0 < 3 {
         starts.remove(0);
     }
     let mut months = " ".repeat(CAL_LABEL_W);
     for (i, label) in starts {
         let col = CAL_LABEL_W + i * 2;
-        // Sin pisar la etiqueta anterior (dejando un espacio) ni salirse por la derecha.
+        // Without overlapping the previous label (leaving a space) or overflowing on the right.
         if col > months.chars().count() && col + label.len() <= grid_w {
             months += &" ".repeat(col - months.chars().count());
             months += label;
@@ -399,7 +399,7 @@ fn calendar(t: &Theme, c: &Contributions) {
     }
     println!("{MARGIN}{}", months.dimmed());
 
-    // Una fila por día de la semana (0 = domingo, como en GitHub).
+    // One row per weekday (0 = Sunday, as on GitHub).
     for weekday in 0..7u8 {
         let label = match weekday {
             1 => "Mon",
@@ -409,7 +409,7 @@ fn calendar(t: &Theme, c: &Contributions) {
         };
         let mut line = format!("{label:<CAL_LABEL_W$}").dimmed().to_string();
         for week in weeks {
-            // La primera y la última semana pueden estar incompletas.
+            // The first and last weeks may be incomplete.
             match week.contribution_days.iter().find(|d| d.weekday == weekday) {
                 Some(d) => line += &format!("{} ", square(level_index(&d.contribution_level))),
                 None => line += "  ",
@@ -418,7 +418,7 @@ fn calendar(t: &Theme, c: &Contributions) {
         println!("{MARGIN}{}", line.trim_end());
     }
 
-    // Debajo: reparto por tipo a la izquierda y leyenda a la derecha.
+    // Below: breakdown by type on the left, legend on the right.
     let kinds = [
         ("commits", c.total_commit_contributions),
         ("PRs", c.total_pull_request_contributions),
@@ -452,21 +452,21 @@ fn calendar(t: &Theme, c: &Contributions) {
     if space >= 3 {
         println!("{MARGIN}{}{breakdown}{}{legend}", " ".repeat(CAL_LABEL_W), " ".repeat(space));
     } else {
-        // Terminal estrecha: una cosa debajo de la otra.
+        // Narrow terminal: one below the other.
         println!("{MARGIN}{}{breakdown}", " ".repeat(CAL_LABEL_W));
         println!("{MARGIN}{}{legend}", " ".repeat(CAL_LABEL_W));
     }
 }
 
-/// Reparte `total` columnas proporcionalmente a `values`, sumando exactamente
-/// `total` y dando al menos 1 columna a cada valor (método del mayor resto).
+/// Splits `total` columns proportionally to `values`, adding up to exactly
+/// `total` and giving each value at least 1 column (largest remainder method).
 fn distribute(values: &[u64], total: usize) -> Vec<usize> {
     let sum: u64 = values.iter().sum();
     let exact: Vec<f64> = values.iter().map(|&v| v as f64 * total as f64 / sum as f64).collect();
     let mut out: Vec<usize> = exact.iter().map(|e| (e.floor() as usize).max(1)).collect();
     let mut used: usize = out.iter().sum();
 
-    // Faltan columnas por el redondeo: se las damos a los de mayor parte decimal.
+    // Rounding left columns over: give them to the largest fractional parts.
     let mut order: Vec<usize> = (0..values.len()).collect();
     order.sort_by(|&a, &b| (exact[b] - exact[b].floor()).total_cmp(&(exact[a] - exact[a].floor())));
     for &i in &order {
@@ -476,7 +476,7 @@ fn distribute(values: &[u64], total: usize) -> Vec<usize> {
         out[i] += 1;
         used += 1;
     }
-    // Sobran columnas por el mínimo de 1: se las quitamos al más ancho.
+    // The minimum of 1 overshot: take columns back from the widest.
     while used > total {
         let Some(i) = (0..out.len()).filter(|&i| out[i] > 1).max_by_key(|&i| out[i]) else { break };
         out[i] -= 1;
@@ -490,7 +490,7 @@ fn languages(t: &Theme, title: &str, langs: &[(String, u64)]) {
     if total == 0 {
         return;
     }
-    // Hasta 6 lenguajes con al menos un 1%; el resto va a "Otros".
+    // Up to 6 languages with at least 1%; the rest goes into "Other".
     let mut shown: Vec<(&str, u64)> = vec![];
     let mut other = 0;
     for (name, n) in langs {
@@ -521,7 +521,7 @@ fn languages(t: &Theme, title: &str, langs: &[(String, u64)]) {
         .map(|(name, n)| {
             let (r, g, b) = lang_rgb(name);
             let pct = format!("{:.1}%", *n as f64 * 100.0 / total as f64);
-            // El padding se calcula sobre el texto plano para no contar los códigos ANSI.
+            // Padding is computed on the plain text so ANSI codes aren't counted.
             let pad = 22usize.saturating_sub(name.chars().count() + pct.len() + 3);
             format!("{} {name} {}{}", "●".truecolor(r, g, b), pct.dimmed(), " ".repeat(pad))
         })
@@ -531,7 +531,7 @@ fn languages(t: &Theme, title: &str, langs: &[(String, u64)]) {
     }
 }
 
-/// Traduce un evento a (etiqueta, repo, detalle). None = evento que no mostramos.
+/// Turns an event into (tag, detail). None = an event we don't show.
 fn describe(e: &Event) -> Option<(&'static str, String)> {
     let p = &e.payload;
     let action = p["action"].as_str().unwrap_or("");
@@ -570,8 +570,8 @@ fn verb(action: &str, merged: bool) -> &'static str {
     }
 }
 
-/// Título de un PR/issue. GitHub a veces lo omite en los eventos; entonces
-/// usamos su número ("#123").
+/// Title of a PR/issue. GitHub sometimes omits it in events; then we use
+/// its number ("#123").
 fn title(item: &serde_json::Value, payload: &serde_json::Value) -> String {
     if let Some(t) = item["title"].as_str().filter(|t| !t.is_empty()) {
         return t.to_string();
@@ -605,7 +605,7 @@ fn tag_color(tag: &str) -> ColoredString {
 }
 
 fn activity(t: &Theme, events: &[Event], max: usize) {
-    // Junta eventos seguidos idénticos (p.ej. 5 pushes a la misma rama) en una línea "×5".
+    // Merge identical consecutive events (e.g. 5 pushes to the same branch) into one "×5" line.
     let mut rows: Vec<(&Event, &str, String, usize)> = vec![];
     for e in events {
         let Some((tag, detail)) = describe(e) else { continue };
@@ -639,7 +639,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn distribute_suma_exacta() {
+    fn distribute_sums_exactly() {
         for values in [vec![955, 41, 4], vec![1, 1, 1], vec![100, 1, 1, 1, 1, 1, 1], vec![7]] {
             let out = distribute(&values, BAR_W);
             assert_eq!(out.iter().sum::<usize>(), BAR_W, "{values:?} -> {out:?}");
@@ -648,9 +648,9 @@ mod tests {
     }
 
     #[test]
-    fn wrap_no_pasa_del_ancho() {
-        let lines = wrap("uno dos tres cuatro cinco seis siete ocho", 10, 10);
+    fn wrap_respects_width() {
+        let lines = wrap("one two three four five six seven eight", 10, 10);
         assert!(lines.iter().all(|l| l.chars().count() <= 10), "{lines:?}");
-        assert_eq!(lines.join(" "), "uno dos tres cuatro cinco seis siete ocho");
+        assert_eq!(lines.join(" "), "one two three four five six seven eight");
     }
 }

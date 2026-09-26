@@ -1,16 +1,16 @@
-//! Archivo de configuración: `~/.config/volgit/config.toml`
-//! (o `$XDG_CONFIG_HOME/volgit/config.toml`).
+//! Config file: `~/.config/volgit/config.toml`
+//! (or `$XDG_CONFIG_HOME/volgit/config.toml`).
 //!
-//! Guarda las opciones por defecto para no tener que escribirlas siempre.
-//! Lo que se pase por línea de comandos manda sobre lo que diga el archivo.
+//! Stores default options so they don't have to be typed every time.
+//! Command-line flags always take precedence over the file.
 
 use crate::ImageArg;
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::path::PathBuf;
 
-/// Plantilla que escribe `--init-config`. Todo va comentado: sin tocar nada,
-/// volgit se comporta igual que sin archivo.
+/// Template written by `--init-config`. Everything is commented out: left
+/// untouched, volgit behaves exactly as if there were no file.
 pub const TEMPLATE: &str = r#"# volgit configuration. Command-line flags take precedence over these values.
 # Uncomment the lines you want to change.
 
@@ -46,7 +46,7 @@ pub struct Config {
     pub cache_minutes: Option<u64>,
 }
 
-/// `top = 5` o `top = "all"`: en TOML son tipos distintos, así que se aceptan los dos.
+/// `top = 5` or `top = "all"`: different types in TOML, so both are accepted.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Top {
@@ -63,7 +63,7 @@ impl Config {
         Some(base.join("volgit").join("config.toml"))
     }
 
-    /// Lee el archivo si existe. Si no existe, configuración vacía; si está mal, error.
+    /// Reads the file if it exists. Missing file: empty config; invalid file: error.
     pub fn load() -> Result<Self> {
         let Some(path) = Self::path() else { return Ok(Self::default()) };
         let text = match std::fs::read_to_string(&path) {
@@ -82,7 +82,7 @@ impl Config {
         Ok(config)
     }
 
-    /// `top` ya convertido: número, o usize::MAX para "all".
+    /// `top` already parsed: a number, or usize::MAX for "all".
     pub fn top(&self) -> Result<Option<usize>> {
         match &self.top {
             None => Ok(None),
@@ -91,7 +91,7 @@ impl Config {
         }
     }
 
-    /// Crea el archivo con la plantilla. No sobrescribe uno existente.
+    /// Creates the file from the template. Never overwrites an existing one.
     pub fn init() -> Result<(PathBuf, bool)> {
         let path = Self::path().context("could not find the config directory ($HOME is not set)")?;
         if path.exists() {
@@ -110,14 +110,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn plantilla_vale_y_no_cambia_nada() {
+    fn template_is_valid_and_changes_nothing() {
         let c = Config::parse(TEMPLATE).unwrap();
         assert!(!c.repos && !c.activity && !c.panel);
         assert!(c.top.is_none() && c.image.is_none() && c.cache_minutes.is_none());
     }
 
     #[test]
-    fn lee_valores() {
+    fn reads_values() {
         let c = Config::parse("repos = true\ntop = \"all\"\nimage = \"blocks\"\navatar_size = 30\ncache_minutes = 0").unwrap();
         assert!(c.repos);
         assert_eq!(c.top().unwrap(), Some(usize::MAX));
@@ -128,10 +128,10 @@ mod tests {
     }
 
     #[test]
-    fn rechaza_errores() {
-        assert!(Config::parse("repo = true").is_err()); // clave mal escrita
+    fn rejects_errors() {
+        assert!(Config::parse("repo = true").is_err()); // misspelled key
         assert!(Config::parse("avatar_size = 200").is_err());
         assert!(Config::parse("image = \"sixel\"").is_err());
-        assert!(Config::parse("top = \"muchos\"").unwrap().top().is_err());
+        assert!(Config::parse("top = \"many\"").unwrap().top().is_err());
     }
 }

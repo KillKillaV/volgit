@@ -60,7 +60,7 @@ struct SearchCount {
     total_count: u64,
 }
 
-/// Todo lo que sabemos de un repo, listo para renderizar o volcar a JSON.
+/// Everything we know about a repo, ready to render or dump as JSON.
 #[derive(Debug, Serialize)]
 pub struct Report {
     pub repo: Repo,
@@ -121,9 +121,9 @@ pub struct Event {
 pub struct Day {
     pub date: String,
     pub contribution_count: u64,
-    /// NONE, FIRST_QUARTILE … FOURTH_QUARTILE: la intensidad que usa GitHub.
+    /// NONE, FIRST_QUARTILE … FOURTH_QUARTILE: the intensity GitHub uses.
     pub contribution_level: String,
-    /// 0 = domingo … 6 = sábado.
+    /// 0 = Sunday … 6 = Saturday.
     pub weekday: u8,
 }
 
@@ -140,7 +140,7 @@ pub struct Calendar {
     pub weeks: Vec<Week>,
 }
 
-/// Calendario de contribuciones del último año y su reparto por tipo.
+/// Contribution calendar for the last year and its breakdown by type.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Contributions {
@@ -166,7 +166,7 @@ const CONTRIBUTIONS_QUERY: &str = "query($login: String!) {
   }
 }";
 
-/// Secciones opcionales del perfil, cada una activada con su parámetro.
+/// Optional profile sections, each enabled by its own flag.
 #[derive(Clone, Copy, Default)]
 pub struct Sections {
     pub panel: bool,
@@ -177,14 +177,14 @@ pub struct Sections {
 #[derive(Debug, Serialize)]
 pub struct UserReport {
     pub user: User,
-    /// Repos propios (sin forks), ordenados por estrellas.
+    /// Own repos (no forks), sorted by stars.
     pub repos: Vec<UserRepo>,
     pub total_stars: u64,
     pub total_forks: u64,
-    /// Lenguaje principal → nº de repos que lo usan.
+    /// Main language → number of repos using it.
     pub languages: Vec<(String, u64)>,
     pub events: Vec<Event>,
-    /// Solo con token (GraphQL lo exige) y solo para usuarios, no organizaciones.
+    /// Only with a token (GraphQL requires one) and only for users, not organizations.
     pub contributions: Option<Contributions>,
 }
 
@@ -202,11 +202,11 @@ impl GitHub {
         Ok(Self { client, token, cache })
     }
 
-    /// GET a la API. Devuelve Ok(None) en 404 (p.ej. repo sin releases).
+    /// GET from the API. Returns Ok(None) on 404 (e.g. a repo with no releases).
     fn get<T: DeserializeOwned>(&self, path: &str) -> Result<Option<T>> {
         let url = format!("{API}{path}");
-        // En caché se guarda el JSON tal cual, o "null" para los 404, así que se
-        // lee como Option<T>. Si no se puede leer (p.ej. formato viejo), a la red.
+        // The cache stores the raw JSON, or "null" for 404s, so it is read back as
+        // Option<T>. If it can't be parsed (e.g. an old format), go to the network.
         if let Some(body) = self.cache.as_ref().and_then(|c| c.get(&url))
             && let Ok(value) = serde_json::from_slice::<Option<T>>(&body)
         {
@@ -230,9 +230,9 @@ impl GitHub {
             return Ok(Some(value));
         }
 
-        // Un 403 no siempre es el límite: GitHub también lo usa p.ej. cuando la
-        // lista de contribuidores es demasiado grande. Solo es el límite si la
-        // cabecera dice que no quedan peticiones (o si es un 429).
+        // A 403 isn't always the rate limit: GitHub also uses it e.g. when the
+        // contributor list is too large. It's only the rate limit if the header
+        // says no requests are left (or on a 429).
         let header = |name: &str| -> Option<i64> { resp.headers().get(name)?.to_str().ok()?.parse().ok() };
         let remaining = header("x-ratelimit-remaining");
         let reset = header("x-ratelimit-reset");
@@ -262,11 +262,11 @@ impl GitHub {
         self.token.is_some()
     }
 
-    /// Calendario de contribuciones vía GraphQL. None si no hay token, si es
-    /// una organización o si falla: es una sección opcional.
+    /// Contribution calendar through GraphQL. None without a token, for
+    /// organizations or on failure: it's an optional section.
     pub fn contributions(&self, login: &str) -> Option<Contributions> {
         let token = self.token.as_ref()?;
-        // GraphQL va por POST, así que la clave de caché no puede ser la URL.
+        // GraphQL uses POST, so the cache key can't be the URL.
         let key = format!("graphql:contributions:{login}");
         if let Some(body) = self.cache.as_ref().and_then(|c| c.get(&key))
             && let Ok(c) = serde_json::from_slice(&body)
@@ -284,7 +284,7 @@ impl GitHub {
         Some(contributions)
     }
 
-    /// Descarga una imagen (avatar). Los fallos se ignoran: la foto es opcional.
+    /// Downloads an image (avatar). Failures are ignored: the avatar is optional.
     pub fn download(&self, url: &str) -> Option<Vec<u8>> {
         if let Some(bytes) = self.cache.as_ref().and_then(|c| c.get(url)) {
             return Some(bytes);
@@ -308,17 +308,22 @@ impl GitHub {
         let mut languages: Vec<_> = langs.into_iter().collect();
         languages.sort_by(|a, b| b.1.cmp(&a.1));
 
-        // En repos enormes (p.ej. torvalds/linux) GitHub se niega a listar
-        // contribuidores; en ese caso la sección simplemente no aparece.
-        let contributors = self
-            // La API devuelve como mucho 100 por página.
-            .get(&format!("{base}/contributors?per_page={}", top.clamp(1, 100)))
-            .ok()
-            .flatten()
-            .unwrap_or_default();
+        // For huge repos (e.g. torvalds/linux) GitHub refuses to list contributors;
+        // the section is simply left out. With top = 0 (comparison mode doesn't
+        // use them) they aren't requested at all.
+        let contributors = if top == 0 {
+            vec![]
+        } else {
+            self
+                // The API returns at most 100 per page.
+                .get(&format!("{base}/contributors?per_page={}", top.min(100)))
+                .ok()
+                .flatten()
+                .unwrap_or_default()
+        };
         let latest_release = self.get(&format!("{base}/releases/latest"))?;
 
-        // La búsqueda tiene un límite más estricto; si falla no rompemos el informe.
+        // Search has a stricter rate limit; if it fails, the report still works.
         let open_prs = self
             .get::<SearchCount>(&format!(
                 "/search/issues?q=repo:{owner}/{name}+type:pr+state:open&per_page=1"
@@ -335,7 +340,7 @@ impl GitHub {
             .get(&format!("/users/{login}"))?
             .with_context(|| format!("user {login} not found"))?;
 
-        // Máximo 5 páginas (500 repos) para no fundir el límite de la API.
+        // At most 5 pages (500 repos) to avoid burning through the rate limit.
         let mut repos: Vec<UserRepo> = vec![];
         let pages = user.public_repos.div_ceil(100).clamp(1, 5);
         for page in 1..=pages {
@@ -357,8 +362,8 @@ impl GitHub {
         let mut languages: Vec<_> = langs.into_iter().collect();
         languages.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
-        // Actividad y panel solo se piden si se van a mostrar: ahorra peticiones.
-        // (Los repos se descargan siempre porque de ellos salen las estrellas y los lenguajes.)
+        // Activity and the contribution graph are only fetched when shown, to save
+        // requests. (Repos are always fetched: stars and languages come from them.)
         let events = if sections.activity {
             self.get(&format!("/users/{login}/events/public?per_page=30"))?.unwrap_or_default()
         } else {

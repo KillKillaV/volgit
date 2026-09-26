@@ -1,8 +1,8 @@
-//! Dibuja la foto de perfil en la terminal. Dos modos:
-//! - Bloques: medios bloques (▀), cada celda pinta dos píxeles. Funciona en
-//!   cualquier terminal con color verdadero, pero se ve pixelado.
-//! - Kitty: se envía la imagen real (PNG) con el protocolo gráfico de kitty,
-//!   que también entienden Ghostty y WezTerm.
+//! Draws the avatar in the terminal. Two modes:
+//! - Blocks: half blocks (▀), each cell paints two pixels. Works in any
+//!   true-color terminal, but looks pixelated.
+//! - Kitty: sends the real image (PNG) through the kitty graphics protocol,
+//!   which Ghostty and WezTerm also understand.
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -14,24 +14,24 @@ pub type Rgb = (u8, u8, u8);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode {
-    /// Imagen real con el protocolo gráfico de kitty.
+    /// Real image through the kitty graphics protocol.
     Kitty,
-    /// Medios bloques de colores (cualquier terminal).
+    /// Colored half blocks (any terminal).
     Blocks,
 }
 
-/// Radio de las esquinas redondeadas, en proporción al lado de la imagen.
+/// Rounded corner radius, relative to the image side.
 const CORNER: f32 = 0.22;
 
-/// Cuánto más ancha que alta sale la foto en modo bloques (en %).
+/// How much wider than tall the avatar is in block mode (percent).
 const WIDEN_PCT: usize = 8;
 
 pub struct Avatar {
-    /// Una línea por fila de celdas, ya con códigos ANSI.
+    /// One line per row of cells, ANSI codes included.
     pub lines: Vec<String>,
-    /// Ancho visible en columnas (igual para todas las líneas).
+    /// Visible width in columns (the same for every line).
     pub width: usize,
-    /// Color representativo de la imagen, para usar como acento.
+    /// Representative color of the image, used as the accent.
     pub accent: Rgb,
 }
 
@@ -44,18 +44,18 @@ impl Avatar {
         }
     }
 
-    /// Con `cols` = 28 ocupa 14 filas (las de un cuadrado) pero 30 columnas:
-    /// un poco más ancha que alta. Para no deformar la cara, la foto se recorta
-    /// por el centro a la proporción real del hueco en vez de estirarla.
+    /// With `cols` = 28 it takes 14 rows (those of a square) but 30 columns:
+    /// slightly wider than tall. To avoid distorting the face, the image is
+    /// center-cropped to the real proportions of the area instead of stretched.
     fn blocks(img: &RgbaImage, cols: usize) -> Self {
         let rows = (cols / 2).max(1);
         let width = cols + cols * WIDEN_PCT / 100;
-        let (w, h) = (width as u32, rows as u32 * 2); // 2 píxeles por celda en vertical
+        let (w, h) = (width as u32, rows as u32 * 2); // 2 pixels per cell vertically
 
-        // Proporción física del hueco (ancho/alto) según la forma de las celdas.
+        // Physical proportions of the area (width/height) given the cell shape.
         let target = width as f32 * crate::term::cell_aspect() / rows as f32;
         let img = crop_to_aspect(img, target);
-        // Lanczos3 conserva mejor los detalles al reducir tanto la imagen.
+        // Lanczos3 keeps the most detail when downscaling this much.
         let mut img = image::imageops::resize(&img, w, h, FilterType::Lanczos3);
         round_corners(&mut img, w.min(h) as f32 * CORNER);
 
@@ -73,9 +73,9 @@ impl Avatar {
         Self { lines, width, accent: accent(&img) }
     }
 
-    /// La imagen ocupa `cols` columnas y las filas que hagan falta para que
-    /// salga cuadrada. Se coloca en la primera línea y el resto son espacios
-    /// que reservan su hueco para que el texto de al lado no la pise.
+    /// The image takes `cols` columns and as many rows as needed to look square.
+    /// It is placed on the first line; the other lines are spaces that reserve
+    /// its area so the text next to it doesn't overlap.
     fn kitty(img: &RgbaImage, cols: usize) -> Option<Self> {
         let rows = ((cols as f32 * crate::term::cell_aspect()).round() as usize).max(1);
 
@@ -94,8 +94,8 @@ impl Avatar {
     }
 }
 
-/// Recorta el centro de la imagen para que tenga la proporción `aspect`
-/// (ancho / alto), quitando por los lados o por arriba y abajo según haga falta.
+/// Center-crops the image to the `aspect` ratio (width / height), trimming the
+/// sides or the top and bottom as needed.
 fn crop_to_aspect(img: &RgbaImage, aspect: f32) -> RgbaImage {
     let (w, h) = (img.width(), img.height());
     let (cw, ch) = if w as f32 / h as f32 > aspect {
@@ -106,17 +106,17 @@ fn crop_to_aspect(img: &RgbaImage, aspect: f32) -> RgbaImage {
     image::imageops::crop_imm(img, (w - cw) / 2, (h - ch) / 2, cw, ch).to_image()
 }
 
-/// Secuencia del protocolo gráfico de kitty para mostrar un PNG:
-/// `ESC _G <claves> ; <base64> ESC \`. Claves usadas:
-/// - a=T: transmitir y mostrar a la vez
-/// - f=100: los datos son un PNG
-/// - c, r: tamaño en columnas y filas (kitty escala la imagen a ese hueco)
-/// - C=1: no mover el cursor, para seguir escribiendo el texto de al lado
-/// - q=2: que la terminal no responda (si no, su "OK" aparecería en la shell)
-/// - m=1/0: quedan más trozos / último trozo
+/// kitty graphics protocol sequence that displays a PNG:
+/// `ESC _G <keys> ; <base64> ESC \`. Keys used:
+/// - a=T: transmit and display at once
+/// - f=100: the data is a PNG
+/// - c, r: size in columns and rows (kitty scales the image to fit)
+/// - C=1: don't move the cursor, so the text next to it can be written
+/// - q=2: no reply from the terminal (its "OK" would show up in the shell)
+/// - m=1/0: more chunks follow / last chunk
 ///
-/// El base64 se parte en trozos de 4096 bytes como pide el protocolo; solo el
-/// primero lleva todas las claves.
+/// The base64 is split into 4096-byte chunks as the protocol requires; only
+/// the first one carries all the keys.
 fn kitty_escape(png: &[u8], cols: usize, rows: usize) -> String {
     let data = BASE64.encode(png);
     let chunks: Vec<&[u8]> = data.as_bytes().chunks(4096).collect();
@@ -128,7 +128,7 @@ fn kitty_escape(png: &[u8], cols: usize, rows: usize) -> String {
         } else {
             out += &format!("\x1b_Gm={more},q=2;");
         }
-        // El base64 siempre es ASCII, así que cada trozo es UTF-8 válido.
+        // Base64 is always ASCII, so every chunk is valid UTF-8.
         out += std::str::from_utf8(chunk).unwrap_or_default();
         out += "\x1b\\";
     }
@@ -152,9 +152,9 @@ fn cell(top: &Rgba<u8>, bottom: Option<&Rgba<u8>>) -> String {
     }
 }
 
-/// Hace transparentes las esquinas para dar un cuadrado redondeado.
-/// El borde se suaviza (antialiasing): los píxeles que el arco corta por la
-/// mitad quedan semitransparentes en vez de todo o nada.
+/// Makes the corners transparent to get a rounded square.
+/// The edge is antialiased: pixels cut in half by the arc become
+/// semi-transparent instead of all-or-nothing.
 fn round_corners(img: &mut RgbaImage, r: f32) {
     let (w, h) = (img.width() as f32, img.height() as f32);
     for (x, y, p) in img.enumerate_pixels_mut() {
@@ -162,19 +162,19 @@ fn round_corners(img: &mut RgbaImage, r: f32) {
         let cx = px.clamp(r, w - r);
         let cy = py.clamp(r, h - r);
         let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
-        // dist <= r - 0.5 → opaco; dist >= r + 0.5 → transparente; entre medias, gradiente.
+        // dist <= r - 0.5 → opaque; dist >= r + 0.5 → transparent; in between, a gradient.
         let coverage = (r + 0.5 - dist).clamp(0.0, 1.0);
         p[3] = (p[3] as f32 * coverage) as u8;
     }
 }
 
-/// Media de los píxeles pesada por saturación, normalizada a un tono legible
-/// sobre fondo oscuro. Si la imagen es casi gris, devuelve un azul neutro.
+/// Saturation-weighted average of the pixels, normalized to a hue that reads
+/// well on a dark background. Nearly gray images get a neutral blue.
 fn accent(img: &RgbaImage) -> Rgb {
     let (mut sum, mut weight) = ([0f32; 3], 0f32);
     for p in img.pixels().filter(|p| visible(p)) {
         let (_, s, l) = to_hsl(p[0], p[1], p[2]);
-        // Ignora casi negros y casi blancos: no aportan color.
+        // Ignore near-black and near-white pixels: they carry no color.
         let w = s * (1.0 - (2.0 * l - 1.0).abs());
         for i in 0..3 {
             sum[i] += p[i] as f32 * w;

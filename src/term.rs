@@ -1,7 +1,7 @@
-//! Consultas sobre la terminal: tamaño y soporte de imágenes.
+//! Terminal queries: size and image support.
 
-/// Tamaño de la ventana según el sistema (ioctl TIOCGWINSZ). None si la salida
-/// no es una terminal.
+/// Window size as reported by the OS (ioctl TIOCGWINSZ). None if stdout is
+/// not a terminal.
 fn winsize() -> Option<libc::winsize> {
     #[cfg(unix)]
     unsafe {
@@ -13,7 +13,7 @@ fn winsize() -> Option<libc::winsize> {
     None
 }
 
-/// Ancho en columnas. Si no se puede preguntar, prueba $COLUMNS y si no asume 120.
+/// Width in columns. Falls back to $COLUMNS, then to 120.
 pub fn width() -> usize {
     winsize()
         .map(|ws| ws.ws_col as usize)
@@ -21,8 +21,8 @@ pub fn width() -> usize {
         .unwrap_or(120)
 }
 
-/// Proporción ancho/alto de una celda en píxeles (≈0.5 en casi todas las
-/// fuentes). Hace falta para que una imagen cuadrada salga cuadrada.
+/// Width/height ratio of a cell in pixels (≈0.5 for most fonts). Needed so
+/// that a square image is drawn square.
 pub fn cell_aspect() -> f32 {
     winsize()
         .filter(|ws| ws.ws_xpixel > 0 && ws.ws_ypixel > 0)
@@ -30,8 +30,8 @@ pub fn cell_aspect() -> f32 {
         .unwrap_or(0.5)
 }
 
-/// ¿La terminal entiende el protocolo gráfico de kitty?
-/// kitty, Ghostty y WezTerm sí. Dentro de tmux/screen no llega a la terminal real.
+/// Does the terminal support the kitty graphics protocol?
+/// kitty, Ghostty and WezTerm do. Inside tmux/screen it never reaches the real terminal.
 pub fn supports_kitty_graphics() -> bool {
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     if !var("TMUX").is_empty() || var("TERM").starts_with("screen") {

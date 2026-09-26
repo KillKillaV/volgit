@@ -1,5 +1,6 @@
 mod avatar;
 mod cache;
+mod compare;
 mod config;
 mod github;
 mod render;
@@ -16,6 +17,8 @@ Examples:
   volgit https://github.com/o/r.git   URLs work too (https or ssh)
   volgit                              Repo in the current directory (remote origin)
   volgit @BurntSushi                  User profile
+  volgit tokio-rs/tokio smol-rs/smol  Compare repos side by side
+  volgit @BurntSushi @sharkdp         Compare users side by side
   volgit rust-lang                    Organization profile
   volgit @BurntSushi --repos          With their top repos
   volgit @BurntSushi --activity       With their recent activity
@@ -55,9 +58,10 @@ API rate limit:
     help_template = "{name} {version}\n{about}\n\nUsage: {usage}\n\n{all-args}{after-help}",
 )]
 struct Cli {
-    /// "owner/repo", "@user" or a GitHub URL. If omitted, uses the "origin" remote of the current directory
+    /// "owner/repo", "@user" or a GitHub URL. Give several to compare them side by side.
+    /// If omitted, uses the "origin" remote of the current directory
     #[arg(value_name = "TARGET", help_heading = "Arguments")]
-    repo: Option<String>,
+    targets: Vec<String>,
 
     /// How many contributors / repos to show, or "all" (default 5)
     #[arg(short, long, value_name = "N|all", value_parser = parse_top)]
@@ -124,7 +128,7 @@ struct Cli {
     version: Option<bool>,
 }
 
-/// Extrae (owner, repo) de "owner/repo", "https://github.com/o/r(.git)" o "git@github.com:o/r.git".
+/// Extracts (owner, repo) from "owner/repo", "https://github.com/o/r(.git)" or "git@github.com:o/r.git".
 fn parse_slug(s: &str) -> Option<(String, String)> {
     let s = s.trim().trim_end_matches('/').trim_end_matches(".git");
     let s = s
@@ -136,7 +140,7 @@ fn parse_slug(s: &str) -> Option<(String, String)> {
     (!owner.is_empty() && !name.is_empty()).then(|| (owner.into(), name.into()))
 }
 
-/// `--top`: un número o "all" (sin límite, representado como usize::MAX).
+/// `--top`: a number or "all" (no limit, represented as usize::MAX).
 fn parse_top(s: &str) -> Result<usize, String> {
     match s.to_lowercase().as_str() {
         "all" => Ok(usize::MAX),
@@ -144,7 +148,7 @@ fn parse_top(s: &str) -> Result<usize, String> {
     }
 }
 
-/// Acepta "@login", "login" o "https://github.com/login".
+/// Accepts "@login", "login" or "https://github.com/login".
 fn parse_user(s: &str) -> Option<String> {
     let s = s.trim().trim_end_matches('/');
     let s = s.split_once("github.com/").map(|(_, r)| r).unwrap_or(s);
@@ -171,8 +175,8 @@ impl ImageArg {
     }
 }
 
-/// Descarga y convierte la foto. GitHub acepta `s=` para pedirla ya al tamaño
-/// justo: pequeña para los bloques, a buena resolución para kitty.
+/// Downloads and converts the avatar. GitHub accepts `s=` to request it at the
+/// right size: small for blocks, high resolution for kitty.
 fn load_avatar(gh: &github::GitHub, url: &str, cols: usize, mode: avatar::Mode) -> Option<avatar::Avatar> {
     let px = match mode {
         avatar::Mode::Blocks => cols * 4,
@@ -181,6 +185,52 @@ fn load_avatar(gh: &github::GitHub, url: &str, cols: usize, mode: avatar::Mode) 
     let sep = if url.contains('?') { '&' } else { '?' };
     let bytes = gh.download(&format!("{url}{sep}s={px}"))?;
     avatar::Avatar::from_bytes(&bytes, cols, mode)
+}
+
+/// Several targets: all repos or all users, fetched in parallel (one thread
+/// per target) and printed in columns.
+fn compare_targets(gh: &github::GitHub, targets: &[String], json: bool) -> Result<()> {
+    let users: Vec<Option<String>> = targets.iter().map(|t| parse_user(t)).collect();
+    let all_users = users.iter().all(Option::is_some);
+    if !all_users && users.iter().any(Option::is_some) {
+        bail!("can't compare users with repositories: pass only repos (owner/repo) or only users (@user)");
+    }
+
+    if all_users {
+        let logins: Vec<String> = users.into_iter().flatten().collect();
+        let reports = std::thread::scope(|s| {
+            let handles: Vec<_> = logins
+                .iter()
+                .map(|login| s.spawn(move || gh.user_report(login, github::Sections::default())))
+                .collect();
+            handles.into_iter().map(|h| h.join().expect("fetch thread panicked")).collect::<Result<Vec<_>>>()
+        })?;
+        if json {
+            println!("{}", serde_json::to_string_pretty(&reports)?);
+        } else {
+            compare::print_users(&reports);
+        }
+        return Ok(());
+    }
+
+    let slugs = targets
+        .iter()
+        .map(|t| parse_slug(t).with_context(|| format!("invalid repo: {t}")))
+        .collect::<Result<Vec<_>>>()?;
+    let reports = std::thread::scope(|s| {
+        let handles: Vec<_> = slugs
+            .iter()
+            // top = 0: comparison doesn't use contributors, so they aren't requested.
+            .map(|(owner, name)| s.spawn(move || gh.report(owner, name, 0)))
+            .collect();
+        handles.into_iter().map(|h| h.join().expect("fetch thread panicked")).collect::<Result<Vec<_>>>()
+    })?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&reports)?);
+    } else {
+        compare::print_repos(&reports);
+    }
+    Ok(())
 }
 
 fn origin_remote() -> Result<String> {
@@ -195,16 +245,15 @@ fn origin_remote() -> Result<String> {
 }
 
 fn main() -> Result<()> {
-    // Rust ignora SIGPIPE por defecto, así que `volgit ... | head` acabaría en
-    // pánico al cerrarse la tubería. Restauramos el comportamiento clásico de
-    // Unix: el proceso termina en silencio.
+    // Rust ignores SIGPIPE by default, so `volgit ... | head` would panic when
+    // the pipe closes. Restore the classic Unix behavior: exit silently.
     #[cfg(unix)]
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
     let cli = Cli::parse();
 
-    // Acciones que no consultan GitHub.
+    // Actions that don't query GitHub.
     if let Some(shell) = cli.completions {
         clap_complete::generate(shell, &mut Cli::command(), "volgit", &mut std::io::stdout());
         return Ok(());
@@ -216,8 +265,8 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Cada opción sale de la línea de comandos si se ha escrito; si no, del
-    // archivo de configuración; y si tampoco, del valor por defecto.
+    // Each option comes from the command line if given; otherwise from the
+    // config file; otherwise from its default.
     let cfg = if cli.no_config { config::Config::default() } else { config::Config::load()? };
     let top = cli.top.or(cfg.top()?).unwrap_or(5);
     let sections = github::Sections {
@@ -235,22 +284,26 @@ fn main() -> Result<()> {
         colored::control::set_override(false);
     }
 
-    let input = match cli.repo {
-        // `volgit help` también muestra la ayuda (para un usuario llamado "help", usa @help).
-        Some(r) if r == "help" => {
-            Cli::command().print_help()?;
-            return Ok(());
-        }
-        Some(r) => r,
-        None => origin_remote()?,
-    };
-    // `GITHUB_TOKEN=` (vacío) cuenta como "sin token", no como token inválido.
+    // `volgit help` also prints help (for a user literally named "help", use @help).
+    if cli.targets.len() == 1 && cli.targets[0] == "help" {
+        Cli::command().print_help()?;
+        return Ok(());
+    }
+    // `GITHUB_TOKEN=` (empty) means "no token", not an invalid token.
     let cache = cache::Cache::new(std::time::Duration::from_secs(cache_minutes * 60));
     let gh = github::GitHub::new(cli.token.filter(|t| !t.trim().is_empty()), cache)?;
-    // La foto va con códigos ANSI crudos: solo tiene sentido en una terminal con color.
+
+    if cli.targets.len() > 1 {
+        return compare_targets(&gh, &cli.targets, cli.json);
+    }
+    let input = match cli.targets.into_iter().next() {
+        Some(t) => t,
+        None => origin_remote()?,
+    };
+    // The avatar uses raw escape codes: only meaningful in a color terminal.
     let show_avatar = !cli.json && !no_avatar && !no_color && std::io::stdout().is_terminal();
 
-    // "@usuario" o un nombre sin "/" → perfil de usuario/organización.
+    // "@user" or a name without "/" → user/organization profile.
     if let Some(login) = parse_user(&input) {
         let report = gh.user_report(&login, sections)?;
         if sections.panel && report.contributions.is_none() {
@@ -289,7 +342,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn repos_en_todos_los_formatos() {
+    fn repos_in_every_format() {
         let want = Some(("o".to_string(), "r".to_string()));
         for input in ["o/r", "https://github.com/o/r", "https://github.com/o/r.git", "git@github.com:o/r.git", "github.com/o/r/"] {
             assert_eq!(parse_slug(input), want, "{input}");
@@ -306,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn usuarios() {
+    fn users() {
         assert_eq!(parse_user("@BurntSushi").as_deref(), Some("BurntSushi"));
         assert_eq!(parse_user("rust-lang").as_deref(), Some("rust-lang"));
         assert_eq!(parse_user("https://github.com/torvalds/").as_deref(), Some("torvalds"));
