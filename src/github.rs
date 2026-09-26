@@ -165,6 +165,14 @@ const CONTRIBUTIONS_QUERY: &str = "query($login: String!) {
   }
 }";
 
+/// Secciones opcionales del perfil, cada una activada con su parámetro.
+#[derive(Clone, Copy, Default)]
+pub struct Sections {
+    pub panel: bool,
+    pub repos: bool,
+    pub activity: bool,
+}
+
 #[derive(Debug, Serialize)]
 pub struct UserReport {
     pub user: User,
@@ -201,7 +209,7 @@ impl GitHub {
         if let Some(t) = &self.token {
             req = req.bearer_auth(t);
         }
-        let resp = req.send().with_context(|| format!("fallo de red en {path}"))?;
+        let resp = req.send().with_context(|| format!("network error on {path}"))?;
         let status = resp.status();
         if status == StatusCode::NOT_FOUND {
             return Ok(None);
@@ -219,17 +227,17 @@ impl GitHub {
         if status == StatusCode::TOO_MANY_REQUESTS || remaining == Some(0) {
             let when = reset
                 .and_then(|ts| DateTime::from_timestamp(ts, 0))
-                .map(|t| format!(" (se reinicia a las {})", t.with_timezone(&Local).format("%H:%M")))
+                .map(|t| format!(" (resets at {})", t.with_timezone(&Local).format("%H:%M")))
                 .unwrap_or_default();
-            let hint = if self.token.is_none() { "; exporta GITHUB_TOKEN para subirlo a 5000/hora" } else { "" };
-            bail!("límite de peticiones de GitHub agotado{when}{hint}");
+            let hint = if self.token.is_none() { "; export GITHUB_TOKEN to raise it to 5000/hour" } else { "" };
+            bail!("GitHub rate limit exceeded{when}{hint}");
         }
         let msg = resp
             .json::<serde_json::Value>()
             .ok()
             .and_then(|v| v["message"].as_str().map(String::from))
             .unwrap_or_default();
-        bail!("GitHub respondió {status} en {path}: {msg}")
+        bail!("GitHub returned {status} on {path}: {msg}")
     }
 
     pub fn has_token(&self) -> bool {
@@ -260,7 +268,7 @@ impl GitHub {
         let base = format!("/repos/{owner}/{name}");
         let repo: Repo = self
             .get(&base)?
-            .with_context(|| format!("no existe el repo {owner}/{name} (o es privado)"))?;
+            .with_context(|| format!("repo {owner}/{name} not found (or it is private)"))?;
 
         let langs: HashMap<String, u64> = self.get(&format!("{base}/languages"))?.unwrap_or_default();
         let mut languages: Vec<_> = langs.into_iter().collect();
@@ -288,10 +296,10 @@ impl GitHub {
         Ok(Report { repo, languages, contributors, latest_release, open_prs })
     }
 
-    pub fn user_report(&self, login: &str, with_panel: bool) -> Result<UserReport> {
+    pub fn user_report(&self, login: &str, sections: Sections) -> Result<UserReport> {
         let user: User = self
             .get(&format!("/users/{login}"))?
-            .with_context(|| format!("no existe el usuario {login}"))?;
+            .with_context(|| format!("user {login} not found"))?;
 
         // Máximo 5 páginas (500 repos) para no fundir el límite de la API.
         let mut repos: Vec<UserRepo> = vec![];
@@ -315,12 +323,14 @@ impl GitHub {
         let mut languages: Vec<_> = langs.into_iter().collect();
         languages.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
-        let events = self
-            .get(&format!("/users/{login}/events/public?per_page=30"))?
-            .unwrap_or_default();
-
-        // Solo se pide si se usa --panel: ahorra una petición cuando no hace falta.
-        let contributions = (with_panel && user.kind == "User").then(|| self.contributions(login)).flatten();
+        // Actividad y panel solo se piden si se van a mostrar: ahorra peticiones.
+        // (Los repos se descargan siempre porque de ellos salen las estrellas y los lenguajes.)
+        let events = if sections.activity {
+            self.get(&format!("/users/{login}/events/public?per_page=30"))?.unwrap_or_default()
+        } else {
+            vec![]
+        };
+        let contributions = (sections.panel && user.kind == "User").then(|| self.contributions(login)).flatten();
 
         Ok(UserReport { user, repos, total_stars, total_forks, languages, events, contributions })
     }

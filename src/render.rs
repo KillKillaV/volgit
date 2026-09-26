@@ -1,5 +1,5 @@
 use crate::avatar::{Avatar, Rgb};
-use crate::github::{Contributions, Event, Report, UserReport};
+use crate::github::{Contributions, Event, Report, Sections, UserReport};
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use colored::{ColoredString, Colorize};
 
@@ -10,7 +10,7 @@ const BAR_W: usize = 48;
 const TEXT_W: usize = 56;
 const DEFAULT_ACCENT: Rgb = (122, 162, 247);
 
-const MONTHS: [&str; 12] = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /// Color aproximado de GitHub linguist para los lenguajes más comunes.
 fn lang_rgb(lang: &str) -> Rgb {
@@ -39,7 +39,7 @@ fn lang_rgb(lang: &str) -> Rgb {
         "Haskell" => (94, 80, 134),
         "Makefile" => (66, 120, 25),
         "Dockerfile" => (56, 77, 84),
-        "Otros" => (110, 110, 110),
+        "Other" => (110, 110, 110),
         _ => {
             // Color estable derivado del nombre para el resto.
             let h = lang.bytes().fold(7u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
@@ -82,13 +82,13 @@ fn human(n: u64) -> String {
 fn relative(iso: &str) -> String {
     let Ok(t) = iso.parse::<DateTime<Utc>>() else { return iso.to_string() };
     match (Utc::now() - t).num_days() {
-        0 => "hoy".into(),
-        1 => "ayer".into(),
-        d if d < 30 => format!("hace {d} días"),
-        d if d < 60 => "hace 1 mes".into(),
-        d if d < 365 => format!("hace {} meses", d / 30),
-        d if d < 730 => "hace 1 año".into(),
-        d => format!("hace {} años", d / 365),
+        0 => "today".into(),
+        1 => "yesterday".into(),
+        d if d < 30 => format!("{d} days ago"),
+        d if d < 60 => "1 month ago".into(),
+        d if d < 365 => format!("{} months ago", d / 30),
+        d if d < 730 => "1 year ago".into(),
+        d => format!("{} years ago", d / 365),
     }
 }
 
@@ -173,14 +173,14 @@ pub fn print(rep: &Report, avatar: Option<&Avatar>) {
 
     let mut title = format!("{}{}", format!("{owner}/").dimmed(), t.a(name).bold());
     if r.archived {
-        title += &format!("  {}", "archivado".yellow());
+        title += &format!("  {}", "archived".yellow());
     }
     if r.fork {
         title += &format!("  {}", "fork".dimmed());
     }
     let mut info = title_block(r.full_name.chars().count(), title, r.description.as_deref());
 
-    info.push(t.kv("Estrellas", human(r.stargazers_count)));
+    info.push(t.kv("Stars", human(r.stargazers_count)));
     info.push(t.kv("Forks", human(r.forks_count)));
     if let Some(w) = r.subscribers_count {
         info.push(t.kv("Watchers", human(w)));
@@ -189,10 +189,10 @@ pub fn print(rep: &Report, avatar: Option<&Avatar>) {
     match rep.open_prs {
         Some(prs) => {
             let issues = r.open_issues_count.saturating_sub(prs);
-            info.push(t.kv("Issues", format!("{} abiertos", human(issues))));
-            info.push(t.kv("PRs", format!("{} abiertos", human(prs))));
+            info.push(t.kv("Issues", format!("{} open", human(issues))));
+            info.push(t.kv("PRs", format!("{} open", human(prs))));
         }
-        None => info.push(t.kv("Issues", format!("{} abiertos (con PRs)", human(r.open_issues_count)))),
+        None => info.push(t.kv("Issues", format!("{} open (incl. PRs)", human(r.open_issues_count)))),
     }
     if let Some(rel) = &rep.latest_release {
         let when = rel.published_at.as_deref().map(relative).unwrap_or_default();
@@ -200,19 +200,19 @@ pub fn print(rep: &Report, avatar: Option<&Avatar>) {
     }
     if let Some(l) = &r.license {
         let id = l.spdx_id.clone().filter(|s| s != "NOASSERTION").unwrap_or(l.name.clone());
-        info.push(t.kv("Licencia", id));
+        info.push(t.kv("License", id));
     }
-    info.push(t.kv("Rama", &r.default_branch));
+    info.push(t.kv("Branch", &r.default_branch));
     if let Some(p) = &r.pushed_at {
-        info.push(t.kv("Último push", relative(p)));
+        info.push(t.kv("Last push", relative(p)));
     }
-    info.push(t.kv("Creado", month_year(&r.created_at)));
+    info.push(t.kv("Created", month_year(&r.created_at)));
     // La API da el tamaño en KB.
     let size = match r.size as f64 / 1024.0 {
         mb if mb >= 1024.0 => format!("{:.1} GB", mb / 1024.0),
         mb => format!("{mb:.1} MB"),
     };
-    info.push(t.kv("Tamaño", size));
+    info.push(t.kv("Size", size));
     let url = r.homepage.as_deref().filter(|h| !h.is_empty()).unwrap_or(&r.html_url);
     info.push(t.kv("Web", strip_scheme(url)));
 
@@ -226,10 +226,10 @@ pub fn print(rep: &Report, avatar: Option<&Avatar>) {
         }
     }
 
-    languages(&t, "Lenguajes", &rep.languages);
+    languages(&t, "Languages", &rep.languages);
 
     if !rep.contributors.is_empty() {
-        t.section("Contribuidores");
+        t.section("Contributors");
         let max = rep.contributors[0].contributions.max(1);
         let name_w = rep.contributors.iter().map(|c| c.login.chars().count()).max().unwrap_or(0).min(22);
         for c in &rep.contributors {
@@ -245,7 +245,7 @@ pub fn print(rep: &Report, avatar: Option<&Avatar>) {
     println!();
 }
 
-pub fn print_user(rep: &UserReport, avatar: Option<&Avatar>, top: usize) {
+pub fn print_user(rep: &UserReport, avatar: Option<&Avatar>, top: usize, sections: Sections) {
     let t = Theme::new(avatar);
     let u = &rep.user;
     let org = u.kind == "Organization";
@@ -261,19 +261,19 @@ pub fn print_user(rep: &UserReport, avatar: Option<&Avatar>, top: usize) {
     let followers = if org {
         human(u.followers)
     } else {
-        format!("{}  {}", human(u.followers), format!("siguiendo a {}", human(u.following)).dimmed())
+        format!("{}  {}", human(u.followers), format!("following {}", human(u.following)).dimmed())
     };
-    info.push(t.kv("Seguidores", followers));
+    info.push(t.kv("Followers", followers));
     info.push(t.kv("Repos", format!("{}  {}", u.public_repos, format!("{} gists", u.public_gists).dimmed())));
-    info.push(t.kv("Estrellas", human(rep.total_stars)));
+    info.push(t.kv("Stars", human(rep.total_stars)));
     info.push(t.kv("Forks", human(rep.total_forks)));
 
     let opt = |o: &Option<String>| o.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(String::from);
     if let Some(c) = opt(&u.company) {
-        info.push(t.kv("Empresa", c));
+        info.push(t.kv("Company", c));
     }
     if let Some(l) = opt(&u.location) {
-        info.push(t.kv("Ubicación", l));
+        info.push(t.kv("Location", l));
     }
     if let Some(b) = opt(&u.blog) {
         info.push(t.kv("Web", strip_scheme(&b)));
@@ -281,8 +281,8 @@ pub fn print_user(rep: &UserReport, avatar: Option<&Avatar>, top: usize) {
     if let Some(x) = opt(&u.twitter_username) {
         info.push(t.kv("X", format!("@{x}")));
     }
-    info.push(t.kv("En GitHub", format!("{}  {}", month_year(&u.created_at), relative(&u.created_at).dimmed())));
-    info.push(t.kv("Perfil", strip_scheme(&u.html_url)));
+    info.push(t.kv("Joined", format!("{}  {}", month_year(&u.created_at), relative(&u.created_at).dimmed())));
+    info.push(t.kv("Profile", strip_scheme(&u.html_url)));
 
     side_by_side(avatar, &info);
 
@@ -290,13 +290,13 @@ pub fn print_user(rep: &UserReport, avatar: Option<&Avatar>, top: usize) {
         calendar(&t, c);
     }
 
-    languages(&t, "Lenguajes", &rep.languages);
+    languages(&t, "Languages", &rep.languages);
 
-    if !rep.repos.is_empty() {
+    if sections.repos && !rep.repos.is_empty() {
         let title = if top >= rep.repos.len() {
             format!("Repos ({})", rep.repos.len())
         } else {
-            "Repos destacados".to_string()
+            "Top repos".to_string()
         };
         t.section(&title);
         for r in rep.repos.iter().take(top) {
@@ -315,7 +315,9 @@ pub fn print_user(rep: &UserReport, avatar: Option<&Avatar>, top: usize) {
         }
     }
 
-    activity(&t, &rep.events, top.max(8));
+    if sections.activity {
+        activity(&t, &rep.events, top.max(8));
+    }
     println!();
 }
 
@@ -338,13 +340,13 @@ fn square(level: usize) -> ColoredString {
     "■".truecolor(r, g, b)
 }
 
-/// 1297 → "1.297" (separador de miles español).
+/// 1297 → "1,297" (separador de miles en inglés).
 fn thousands(n: u64) -> String {
     let digits = n.to_string();
     let mut out = String::new();
     for (i, c) in digits.chars().enumerate() {
         if i > 0 && (digits.len() - i) % 3 == 0 {
-            out.push('.');
+            out.push(',');
         }
         out.push(c);
     }
@@ -363,11 +365,11 @@ fn calendar(t: &Theme, c: &Contributions) {
     }
     let grid_w = CAL_LABEL_W + weeks.len() * 2 - 1;
 
-    let total = format!("{} en el último año", thousands(cal.total_contributions));
+    let total = format!("{} in the last year", thousands(cal.total_contributions));
     println!(
         "\n{MARGIN}{}{}{}",
-        t.a("Contribuciones").bold(),
-        " ".repeat(grid_w.saturating_sub("Contribuciones".len() + total.chars().count()).max(2)),
+        t.a("Contributions").bold(),
+        " ".repeat(grid_w.saturating_sub("Contributions".len() + total.chars().count()).max(2)),
         total.dimmed()
     );
 
@@ -400,9 +402,9 @@ fn calendar(t: &Theme, c: &Contributions) {
     // Una fila por día de la semana (0 = domingo, como en GitHub).
     for weekday in 0..7u8 {
         let label = match weekday {
-            1 => "Lun",
-            3 => "Mié",
-            5 => "Vie",
+            1 => "Mon",
+            3 => "Wed",
+            5 => "Fri",
             _ => "",
         };
         let mut line = format!("{label:<CAL_LABEL_W$}").dimmed().to_string();
@@ -420,7 +422,7 @@ fn calendar(t: &Theme, c: &Contributions) {
     let kinds = [
         ("commits", c.total_commit_contributions),
         ("PRs", c.total_pull_request_contributions),
-        ("revisiones", c.total_pull_request_review_contributions),
+        ("reviews", c.total_pull_request_review_contributions),
         ("issues", c.total_issue_contributions),
     ];
     let sum: u64 = kinds.iter().map(|k| k.1).sum();
@@ -439,11 +441,11 @@ fn calendar(t: &Theme, c: &Contributions) {
 
     let legend = format!(
         "{} {}{}",
-        "Menos".dimmed(),
+        "Less".dimmed(),
         (0..5).map(|l| format!("{} ", square(l))).collect::<String>(),
-        "Más".dimmed()
+        "More".dimmed()
     );
-    let legend_len = "Menos ".len() + 5 * 2 + "Más".chars().count();
+    let legend_len = "Less ".len() + 5 * 2 + "More".len();
 
     let space = grid_w.saturating_sub(CAL_LABEL_W + breakdown_len + legend_len);
     println!();
@@ -499,7 +501,7 @@ fn languages(t: &Theme, title: &str, langs: &[(String, u64)]) {
         }
     }
     if other > 0 {
-        shown.push(("Otros", other));
+        shown.push(("Other", other));
     }
 
     t.section(title);
@@ -542,28 +544,28 @@ fn describe(e: &Event) -> Option<(&'static str, String)> {
             (tag, with_verb(verb(action, merged), &title(&p["pull_request"], p)))
         }
         "IssuesEvent" => ("issue", with_verb(verb(action, false), &title(&p["issue"], p))),
-        "IssueCommentEvent" => ("comenta", title(&p["issue"], p)),
-        "PullRequestReviewEvent" => ("revisa", title(&p["pull_request"], p)),
-        "PullRequestReviewCommentEvent" => ("revisa", title(&p["pull_request"], p)),
+        "IssueCommentEvent" => ("comment", title(&p["issue"], p)),
+        "PullRequestReviewEvent" => ("review", title(&p["pull_request"], p)),
+        "PullRequestReviewCommentEvent" => ("review", title(&p["pull_request"], p)),
         "CreateEvent" => match p["ref_type"].as_str() {
-            Some("repository") => ("crea", "repositorio nuevo".into()),
-            Some(kind) => ("crea", format!("{kind} {}", s(&p["ref"]))),
-            None => ("crea", String::new()),
+            Some("repository") => ("create", "new repository".into()),
+            Some(kind) => ("create", format!("{kind} {}", s(&p["ref"]))),
+            None => ("create", String::new()),
         },
-        "DeleteEvent" => ("borra", format!("{} {}", s(&p["ref_type"]), s(&p["ref"]))),
-        "WatchEvent" => ("estrella", String::new()),
+        "DeleteEvent" => ("delete", format!("{} {}", s(&p["ref_type"]), s(&p["ref"]))),
+        "WatchEvent" => ("star", String::new()),
         "ForkEvent" => ("fork", String::new()),
         "ReleaseEvent" => ("release", s(&p["release"]["tag_name"])),
-        "PublicEvent" => ("publica", String::new()),
+        "PublicEvent" => ("public", String::new()),
         _ => return None,
     })
 }
 
 fn verb(action: &str, merged: bool) -> &'static str {
     match action {
-        "opened" => "abre",
-        "closed" if !merged => "cierra",
-        "reopened" => "reabre",
+        "opened" => "opened",
+        "closed" if !merged => "closed",
+        "reopened" => "reopened",
         _ => "",
     }
 }
@@ -580,7 +582,7 @@ fn title(item: &serde_json::Value, payload: &serde_json::Value) -> String {
         .map_or(String::new(), |n| format!("#{n}"))
 }
 
-/// "abre" + "Arregla X" → "abre: Arregla X"; "abre" + "#12" → "abre #12".
+/// "opened" + "Fix X" → "opened: Fix X"; "opened" + "#12" → "opened #12".
 fn with_verb(verb: &str, title: &str) -> String {
     match (verb, title) {
         ("", t) => t.to_string(),
@@ -593,11 +595,11 @@ fn with_verb(verb: &str, title: &str) -> String {
 fn tag_color(tag: &str) -> ColoredString {
     let padded = format!("{tag:<9}");
     match tag {
-        "push" | "crea" | "release" | "publica" => padded.green(),
-        "pr" | "merge" | "revisa" => padded.magenta(),
+        "push" | "create" | "release" | "public" => padded.green(),
+        "pr" | "merge" | "review" => padded.magenta(),
         "issue" => padded.yellow(),
-        "borra" => padded.red(),
-        "estrella" => padded.yellow(),
+        "delete" => padded.red(),
+        "star" => padded.yellow(),
         _ => padded.normal(),
     }
 }
@@ -617,7 +619,7 @@ fn activity(t: &Theme, events: &[Event], max: usize) {
         return;
     }
 
-    t.section("Actividad reciente");
+    t.section("Recent activity");
     for (e, tag, detail, n) in rows.into_iter().take(max) {
         let times = if n > 1 { format!(" ×{n}") } else { String::new() };
         let detail = truncate(&detail, 48);

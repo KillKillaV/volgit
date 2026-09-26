@@ -18,13 +18,13 @@ Para la ficha de un repo hago 5 peticiones:
 | `GET /repos/{o}/{r}/releases/latest` | La última release (da 404 si no hay) |
 | `GET /search/issues?q=repo:{o}/{r}+type:pr+state:open` | Cuántos PRs abiertos hay |
 
-Para un perfil, entre 3 y 7:
+Para un perfil, entre 2 y 7:
 
 | Endpoint | Para qué |
 |---|---|
 | `GET /users/{u}` | Los datos del perfil (sirve igual para organizaciones) |
 | `GET /users/{u}/repos?per_page=100&page=N` | Sus repos, de 1 a 5 páginas |
-| `GET /users/{u}/events/public` | La actividad reciente (máximo 30 eventos de los últimos 90 días) |
+| `GET /users/{u}/events/public` | La actividad reciente (máximo 30 eventos de los últimos 90 días). Solo con `--activity` |
 
 Y si pongo `--panel`, una más a la API GraphQL (`POST /graphql`) para el calendario de contribuciones. Es la única manera de sacarlo, porque la API normal (la REST) no lo da, y GraphQL exige token siempre. Me devuelve las 53 semanas con el nivel de cada día (de `NONE` a `FOURTH_QUARTILE`) y los totales de commits, PRs, issues y revisiones. Solo la pido si uso `--panel`, para no gastar una petición de más.
 

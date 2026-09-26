@@ -31,6 +31,8 @@ Cómo decide si es repo o usuario lo tengo explicado en [[Arquitectura#Decidir s
 |---|---|
 | `-t N` / `--top N` | Cuántos repos o contribuidores enseña (5 por defecto) |
 | `--top all` | Todos. Como mucho 500 repos (sin forks) y 100 contribuidores |
+| `-r` / `--repos` | Los repos destacados del perfil |
+| `-a` / `--activity` | La actividad reciente del perfil |
 | `-p` / `--panel` | El panel de cuadraditos verdes de contribuciones. Solo usuarios y necesita token |
 | `--image MODO` | Cómo pinta la foto: `auto`, `kitty` o `blocks` |
 | `--avatar-size N` | Ancho de la foto en columnas, de 8 a 80 (28 por defecto) |
@@ -39,6 +41,8 @@ Cómo decide si es repo o usuario lo tengo explicado en [[Arquitectura#Decidir s
 | `--json` | Suelta todos los datos en JSON, para usarlo con `jq` o en scripts |
 | `--token TOKEN` | El token. Si no lo pongo, lo coge de `GITHUB_TOKEN` |
 | `-V` | La versión |
+
+Por defecto el perfil sale sin repos, sin actividad y sin panel: solo los datos y los lenguajes. Lo demás lo pido cuando lo quiero, y se pueden juntar: `volgit @BurntSushi -rap` lo saca todo.
 
 Sobre `--image`: en `auto` usa la imagen de verdad si detecta kitty (o Ghostty o WezTerm) y los bloques de colores en cualquier otra terminal. Dentro de tmux siempre bloques, porque tmux no deja pasar las imágenes. Más detalles en [[Foto de perfil]].
 

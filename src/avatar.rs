@@ -23,6 +23,9 @@ pub enum Mode {
 /// Radio de las esquinas redondeadas, en proporción al lado de la imagen.
 const CORNER: f32 = 0.22;
 
+/// Cuánto más ancha que alta sale la foto en modo bloques (en %).
+const WIDEN_PCT: usize = 8;
+
 pub struct Avatar {
     /// Una línea por fila de celdas, ya con códigos ANSI.
     pub lines: Vec<String>,
@@ -41,24 +44,33 @@ impl Avatar {
         }
     }
 
+    /// Con `cols` = 28 ocupa 14 filas (las de un cuadrado) pero 30 columnas:
+    /// un poco más ancha que alta. Para no deformar la cara, la foto se recorta
+    /// por el centro a la proporción real del hueco en vez de estirarla.
     fn blocks(img: &RgbaImage, cols: usize) -> Self {
-        let size = cols as u32;
-        // Lanczos3 conserva mejor los detalles al reducir tanto la imagen.
-        let mut img = image::imageops::resize(img, size, size, FilterType::Lanczos3);
-        round_corners(&mut img, size as f32 * CORNER);
+        let rows = (cols / 2).max(1);
+        let width = cols + cols * WIDEN_PCT / 100;
+        let (w, h) = (width as u32, rows as u32 * 2); // 2 píxeles por celda en vertical
 
-        let mut lines = Vec::with_capacity(cols / 2 + 1);
-        for y in (0..size).step_by(2) {
+        // Proporción física del hueco (ancho/alto) según la forma de las celdas.
+        let target = width as f32 * crate::term::cell_aspect() / rows as f32;
+        let img = crop_to_aspect(img, target);
+        // Lanczos3 conserva mejor los detalles al reducir tanto la imagen.
+        let mut img = image::imageops::resize(&img, w, h, FilterType::Lanczos3);
+        round_corners(&mut img, w.min(h) as f32 * CORNER);
+
+        let mut lines = Vec::with_capacity(rows);
+        for y in (0..h).step_by(2) {
             let mut line = String::new();
-            for x in 0..size {
+            for x in 0..w {
                 let top = img.get_pixel(x, y);
-                let bottom = (y + 1 < size).then(|| img.get_pixel(x, y + 1));
+                let bottom = (y + 1 < h).then(|| img.get_pixel(x, y + 1));
                 line += &cell(top, bottom);
             }
             line += "\x1b[0m";
             lines.push(line);
         }
-        Self { lines, width: cols, accent: accent(&img) }
+        Self { lines, width, accent: accent(&img) }
     }
 
     /// La imagen ocupa `cols` columnas y las filas que hagan falta para que
@@ -80,6 +92,18 @@ impl Avatar {
         lines[0] = format!("{}{blank}", kitty_escape(&png, cols, rows));
         Some(Self { lines, width: cols, accent })
     }
+}
+
+/// Recorta el centro de la imagen para que tenga la proporción `aspect`
+/// (ancho / alto), quitando por los lados o por arriba y abajo según haga falta.
+fn crop_to_aspect(img: &RgbaImage, aspect: f32) -> RgbaImage {
+    let (w, h) = (img.width(), img.height());
+    let (cw, ch) = if w as f32 / h as f32 > aspect {
+        (((h as f32 * aspect).round() as u32).clamp(1, w), h)
+    } else {
+        (w, ((w as f32 / aspect).round() as u32).clamp(1, h))
+    };
+    image::imageops::crop_imm(img, (w - cw) / 2, (h - ch) / 2, cw, ch).to_image()
 }
 
 /// Secuencia del protocolo gráfico de kitty para mostrar un PNG:

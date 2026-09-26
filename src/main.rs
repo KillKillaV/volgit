@@ -9,24 +9,25 @@ use std::io::IsTerminal;
 use std::process::Command;
 
 const EXAMPLES: &str = "\
-Ejemplos:
-  volgit sharkdp/bat                  Ficha de un repositorio
-  volgit https://github.com/o/r.git   También acepta URLs (https o ssh)
-  volgit                              Repo del directorio actual (remote origin)
-  volgit @BurntSushi                  Perfil de un usuario
-  volgit rust-lang                    Perfil de una organización
-  volgit @BurntSushi --top 10         Más repos y más actividad
-  volgit @BurntSushi --top all        Todos sus repos (sin forks)
-  volgit @BurntSushi --panel          Con el panel de contribuciones
-  volgit @BurntSushi --image blocks   Foto con bloques aunque estés en kitty
-  volgit sharkdp/bat --json | jq .    Datos en JSON para scripts
+Examples:
+  volgit sharkdp/bat                  Repository card
+  volgit https://github.com/o/r.git   URLs work too (https or ssh)
+  volgit                              Repo in the current directory (remote origin)
+  volgit @BurntSushi                  User profile
+  volgit rust-lang                    Organization profile
+  volgit @BurntSushi --repos          With their top repos
+  volgit @BurntSushi --activity       With their recent activity
+  volgit @BurntSushi -r --top all     All their repos (forks excluded)
+  volgit @BurntSushi --panel          With the contribution graph
+  volgit @BurntSushi --image blocks   Block avatar even inside kitty
+  volgit sharkdp/bat --json | jq .    JSON output for scripts
 
-Límite de la API:
-  Sin token GitHub permite 60 peticiones/hora; con token, 5000.
-  Crea uno sin permisos en https://github.com/settings/personal-access-tokens
-  y expórtalo:  export GITHUB_TOKEN=github_pat_...";
+API rate limit:
+  Without a token GitHub allows 60 requests/hour; with one, 5000.
+  Create one with no permissions at https://github.com/settings/personal-access-tokens
+  and export it:  export GITHUB_TOKEN=github_pat_...";
 
-/// Consulta repositorios, usuarios y organizaciones de GitHub desde la terminal.
+/// Look up GitHub repositories, users and organizations from the terminal.
 #[derive(Parser)]
 #[command(
     version,
@@ -34,52 +35,60 @@ Límite de la API:
     after_help = EXAMPLES,
     disable_help_flag = true,
     disable_version_flag = true,
-    next_help_heading = "Opciones",
-    override_usage = "volgit [OPCIONES] [OBJETIVO]",
-    help_template = "{name} {version}\n{about}\n\nUso: {usage}\n\n{all-args}{after-help}",
+    next_help_heading = "Options",
+    override_usage = "volgit [OPTIONS] [TARGET]",
+    help_template = "{name} {version}\n{about}\n\nUsage: {usage}\n\n{all-args}{after-help}",
 )]
 struct Cli {
-    /// "owner/repo", "@usuario" o URL de GitHub. Si se omite, usa el remote "origin" del directorio actual
-    #[arg(value_name = "OBJETIVO", help_heading = "Argumentos")]
+    /// "owner/repo", "@user" or a GitHub URL. If omitted, uses the "origin" remote of the current directory
+    #[arg(value_name = "TARGET", help_heading = "Arguments")]
     repo: Option<String>,
 
-    /// Cuántos contribuidores / repos mostrar, o "all" para todos (por defecto 5)
+    /// How many contributors / repos to show, or "all" (default 5)
     #[arg(short, long, default_value = "5", value_name = "N|all", hide_default_value = true, value_parser = parse_top)]
     top: usize,
 
-    /// Salida en JSON (para scripts)
+    /// JSON output (for scripts)
     #[arg(long)]
     json: bool,
 
-    /// Desactiva los colores (y la foto)
+    /// Disable colors (and the avatar)
     #[arg(long)]
     no_color: bool,
 
-    /// No muestra la foto de perfil
+    /// Hide the avatar
     #[arg(long)]
     no_avatar: bool,
 
-    /// Muestra el panel de contribuciones del último año (solo usuarios, requiere token)
+    /// Show the contribution graph for the last year (users only, needs a token)
     #[arg(short, long)]
     panel: bool,
 
-    /// Cómo dibujar la foto: auto (kitty si la terminal lo soporta), kitty o blocks
-    #[arg(long, value_enum, default_value = "auto", value_name = "MODO", hide_possible_values = true, hide_default_value = true)]
+    /// Show the profile's top repos
+    #[arg(short, long)]
+    repos: bool,
+
+    /// Show the profile's recent activity
+    #[arg(short, long)]
+    activity: bool,
+
+    /// How to draw the avatar: auto (kitty if supported), kitty or blocks
+    #[arg(long, value_enum, default_value = "auto", value_name = "MODE", hide_possible_values = true, hide_default_value = true)]
     image: ImageArg,
 
-    /// Ancho de la foto en columnas, de 8 a 80 (por defecto 28)
+    /// Avatar width in columns, 8 to 80 (default 28)
     #[arg(long, default_value_t = 28, value_name = "N", hide_default_value = true, value_parser = clap::value_parser!(u16).range(8..=80))]
     avatar_size: u16,
 
-    /// Token de GitHub (por defecto lee GITHUB_TOKEN)
+    /// GitHub token (defaults to GITHUB_TOKEN)
     #[arg(long, env = "GITHUB_TOKEN", hide_env_values = true, value_name = "TOKEN")]
     token: Option<String>,
 
-    /// Muestra esta ayuda
+    /// Print help
     #[arg(short, long, action = ArgAction::Help)]
     help: Option<bool>,
 
-    /// Muestra la versión
+    /// Print version
     #[arg(short = 'V', long, action = ArgAction::Version)]
     version: Option<bool>,
 }
@@ -99,8 +108,8 @@ fn parse_slug(s: &str) -> Option<(String, String)> {
 /// `--top`: un número o "all" (sin límite, representado como usize::MAX).
 fn parse_top(s: &str) -> Result<usize, String> {
     match s.to_lowercase().as_str() {
-        "all" | "todos" => Ok(usize::MAX),
-        n => n.parse().map_err(|_| format!("se esperaba un número o \"all\", no \"{s}\"")),
+        "all" => Ok(usize::MAX),
+        n => n.parse().map_err(|_| format!("expected a number or \"all\", got \"{s}\"")),
     }
 }
 
@@ -146,9 +155,9 @@ fn origin_remote() -> Result<String> {
     let out = Command::new("git")
         .args(["remote", "get-url", "origin"])
         .output()
-        .context("no se pudo ejecutar git")?;
+        .context("could not run git")?;
     if !out.status.success() {
-        bail!("no se indicó repo y el directorio actual no tiene remote 'origin'");
+        bail!("no target given and the current directory has no 'origin' remote");
     }
     Ok(String::from_utf8(out.stdout)?.trim().to_string())
 }
@@ -184,27 +193,28 @@ fn main() -> Result<()> {
 
     // "@usuario" o un nombre sin "/" → perfil de usuario/organización.
     if let Some(login) = parse_user(&input) {
-        let report = gh.user_report(&login, cli.panel)?;
+        let sections = github::Sections { panel: cli.panel, repos: cli.repos, activity: cli.activity };
+        let report = gh.user_report(&login, sections)?;
         if cli.panel && report.contributions.is_none() {
             let why = if report.user.kind != "User" {
-                "las organizaciones no tienen panel de contribuciones"
+                "organizations don't have a contribution graph"
             } else if !gh.has_token() {
-                "el panel necesita un token (GITHUB_TOKEN)"
+                "the contribution graph needs a token (GITHUB_TOKEN)"
             } else {
-                "GitHub no devolvió el calendario de contribuciones"
+                "GitHub did not return the contribution calendar"
             };
-            eprintln!("aviso: {why}");
+            eprintln!("warning: {why}");
         }
         if cli.json {
             println!("{}", serde_json::to_string_pretty(&report)?);
         } else {
             let avatar = show_avatar.then(|| load_avatar(&gh, &report.user.avatar_url, cols, mode)).flatten();
-            render::print_user(&report, avatar.as_ref(), cli.top);
+            render::print_user(&report, avatar.as_ref(), cli.top, sections);
         }
         return Ok(());
     }
 
-    let (owner, name) = parse_slug(&input).with_context(|| format!("repo no válido: {input}"))?;
+    let (owner, name) = parse_slug(&input).with_context(|| format!("invalid repo: {input}"))?;
     let report = gh.report(&owner, &name, cli.top)?;
 
     if cli.json {
