@@ -75,7 +75,9 @@ impl Cache {
 
     /// Deletes very old entries so the directory doesn't grow forever.
     fn prune(&self) {
-        let Ok(entries) = fs::read_dir(&self.dir) else { return };
+        let Ok(entries) = fs::read_dir(&self.dir) else {
+            return;
+        };
         let limit = self.ttl.max(PRUNE_AFTER);
         for entry in entries.flatten() {
             let old = entry
@@ -94,7 +96,9 @@ impl Cache {
 /// 64-bit FNV-1a hash. Used instead of the standard library hasher because it
 /// always gives the same result, on any Rust version.
 fn fnv1a(s: &str) -> u64 {
-    s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3))
+    s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+        (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 
 #[cfg(test)]
@@ -102,7 +106,11 @@ mod tests {
     use super::*;
 
     fn temp_cache(ttl: Duration) -> Cache {
-        let dir = std::env::temp_dir().join(format!("volgit-test-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let dir = std::env::temp_dir().join(format!(
+            "volgit-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let _ = fs::remove_dir_all(&dir);
         Cache::at(dir, ttl)
     }

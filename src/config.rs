@@ -65,7 +65,9 @@ impl Config {
 
     /// Reads the file if it exists. Missing file: empty config; invalid file: error.
     pub fn load() -> Result<Self> {
-        let Some(path) = Self::path() else { return Ok(Self::default()) };
+        let Some(path) = Self::path() else {
+            return Ok(Self::default());
+        };
         let text = match std::fs::read_to_string(&path) {
             Ok(t) => t,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
@@ -93,14 +95,17 @@ impl Config {
 
     /// Creates the file from the template. Never overwrites an existing one.
     pub fn init() -> Result<(PathBuf, bool)> {
-        let path = Self::path().context("could not find the config directory ($HOME is not set)")?;
+        let path =
+            Self::path().context("could not find the config directory ($HOME is not set)")?;
         if path.exists() {
             return Ok((path, false));
         }
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).with_context(|| format!("could not create {}", dir.display()))?;
+            std::fs::create_dir_all(dir)
+                .with_context(|| format!("could not create {}", dir.display()))?;
         }
-        std::fs::write(&path, TEMPLATE).with_context(|| format!("could not write {}", path.display()))?;
+        std::fs::write(&path, TEMPLATE)
+            .with_context(|| format!("could not write {}", path.display()))?;
         Ok((path, true))
     }
 }
@@ -118,7 +123,10 @@ mod tests {
 
     #[test]
     fn reads_values() {
-        let c = Config::parse("repos = true\ntop = \"all\"\nimage = \"blocks\"\navatar_size = 30\ncache_minutes = 0").unwrap();
+        let c = Config::parse(
+            "repos = true\ntop = \"all\"\nimage = \"blocks\"\navatar_size = 30\ncache_minutes = 0",
+        )
+        .unwrap();
         assert!(c.repos);
         assert_eq!(c.top().unwrap(), Some(usize::MAX));
         assert!(matches!(c.image, Some(ImageArg::Blocks)));

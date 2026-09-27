@@ -116,7 +116,12 @@ struct Cli {
     completions: Option<clap_complete::Shell>,
 
     /// GitHub token (defaults to GITHUB_TOKEN)
-    #[arg(long, env = "GITHUB_TOKEN", hide_env_values = true, value_name = "TOKEN")]
+    #[arg(
+        long,
+        env = "GITHUB_TOKEN",
+        hide_env_values = true,
+        value_name = "TOKEN"
+    )]
     token: Option<String>,
 
     /// Print help
@@ -144,7 +149,9 @@ fn parse_slug(s: &str) -> Option<(String, String)> {
 fn parse_top(s: &str) -> Result<usize, String> {
     match s.to_lowercase().as_str() {
         "all" => Ok(usize::MAX),
-        n => n.parse().map_err(|_| format!("expected a number or \"all\", got \"{s}\"")),
+        n => n
+            .parse()
+            .map_err(|_| format!("expected a number or \"all\", got \"{s}\"")),
     }
 }
 
@@ -177,7 +184,12 @@ impl ImageArg {
 
 /// Downloads and converts the avatar. GitHub accepts `s=` to request it at the
 /// right size: small for blocks, high resolution for kitty.
-fn load_avatar(gh: &github::GitHub, url: &str, cols: usize, mode: avatar::Mode) -> Option<avatar::Avatar> {
+fn load_avatar(
+    gh: &github::GitHub,
+    url: &str,
+    cols: usize,
+    mode: avatar::Mode,
+) -> Option<avatar::Avatar> {
     let px = match mode {
         avatar::Mode::Blocks => cols * 4,
         avatar::Mode::Kitty => 460,
@@ -193,7 +205,9 @@ fn compare_targets(gh: &github::GitHub, targets: &[String], json: bool) -> Resul
     let users: Vec<Option<String>> = targets.iter().map(|t| parse_user(t)).collect();
     let all_users = users.iter().all(Option::is_some);
     if !all_users && users.iter().any(Option::is_some) {
-        bail!("can't compare users with repositories: pass only repos (owner/repo) or only users (@user)");
+        bail!(
+            "can't compare users with repositories: pass only repos (owner/repo) or only users (@user)"
+        );
     }
 
     if all_users {
@@ -203,7 +217,10 @@ fn compare_targets(gh: &github::GitHub, targets: &[String], json: bool) -> Resul
                 .iter()
                 .map(|login| s.spawn(move || gh.user_report(login, github::Sections::default())))
                 .collect();
-            handles.into_iter().map(|h| h.join().expect("fetch thread panicked")).collect::<Result<Vec<_>>>()
+            handles
+                .into_iter()
+                .map(|h| h.join().expect("fetch thread panicked"))
+                .collect::<Result<Vec<_>>>()
         })?;
         if json {
             println!("{}", serde_json::to_string_pretty(&reports)?);
@@ -223,7 +240,10 @@ fn compare_targets(gh: &github::GitHub, targets: &[String], json: bool) -> Resul
             // top = 0: comparison doesn't use contributors, so they aren't requested.
             .map(|(owner, name)| s.spawn(move || gh.report(owner, name, 0)))
             .collect();
-        handles.into_iter().map(|h| h.join().expect("fetch thread panicked")).collect::<Result<Vec<_>>>()
+        handles
+            .into_iter()
+            .map(|h| h.join().expect("fetch thread panicked"))
+            .collect::<Result<Vec<_>>>()
     })?;
     if json {
         println!("{}", serde_json::to_string_pretty(&reports)?);
@@ -260,14 +280,22 @@ fn main() -> Result<()> {
     }
     if cli.init_config {
         let (path, created) = config::Config::init()?;
-        let what = if created { "created" } else { "already exists, left untouched:" };
+        let what = if created {
+            "created"
+        } else {
+            "already exists, left untouched:"
+        };
         println!("config file {what} {}", path.display());
         return Ok(());
     }
 
     // Each option comes from the command line if given; otherwise from the
     // config file; otherwise from its default.
-    let cfg = if cli.no_config { config::Config::default() } else { config::Config::load()? };
+    let cfg = if cli.no_config {
+        config::Config::default()
+    } else {
+        config::Config::load()?
+    };
     let top = cli.top.or(cfg.top()?).unwrap_or(5);
     let sections = github::Sections {
         panel: cli.panel || cfg.panel,
@@ -278,7 +306,11 @@ fn main() -> Result<()> {
     let no_avatar = cli.no_avatar || cfg.avatar == Some(false);
     let cols = cli.avatar_size.or(cfg.avatar_size).unwrap_or(28) as usize;
     let mode = cli.image.or(cfg.image).unwrap_or(ImageArg::Auto).resolve();
-    let cache_minutes = if cli.no_cache { 0 } else { cfg.cache_minutes.unwrap_or(10) };
+    let cache_minutes = if cli.no_cache {
+        0
+    } else {
+        cfg.cache_minutes.unwrap_or(10)
+    };
 
     if no_color {
         colored::control::set_override(false);
@@ -319,7 +351,9 @@ fn main() -> Result<()> {
         if cli.json {
             println!("{}", serde_json::to_string_pretty(&report)?);
         } else {
-            let avatar = show_avatar.then(|| load_avatar(&gh, &report.user.avatar_url, cols, mode)).flatten();
+            let avatar = show_avatar
+                .then(|| load_avatar(&gh, &report.user.avatar_url, cols, mode))
+                .flatten();
             render::print_user(&report, avatar.as_ref(), top, sections);
         }
         return Ok(());
@@ -331,7 +365,9 @@ fn main() -> Result<()> {
     if cli.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
-        let avatar = show_avatar.then(|| load_avatar(&gh, &report.repo.owner.avatar_url, cols, mode)).flatten();
+        let avatar = show_avatar
+            .then(|| load_avatar(&gh, &report.repo.owner.avatar_url, cols, mode))
+            .flatten();
         render::print(&report, avatar.as_ref());
     }
     Ok(())
@@ -344,7 +380,13 @@ mod tests {
     #[test]
     fn repos_in_every_format() {
         let want = Some(("o".to_string(), "r".to_string()));
-        for input in ["o/r", "https://github.com/o/r", "https://github.com/o/r.git", "git@github.com:o/r.git", "github.com/o/r/"] {
+        for input in [
+            "o/r",
+            "https://github.com/o/r",
+            "https://github.com/o/r.git",
+            "git@github.com:o/r.git",
+            "github.com/o/r/",
+        ] {
             assert_eq!(parse_slug(input), want, "{input}");
         }
         assert_eq!(parse_slug("solo"), None);
@@ -362,7 +404,10 @@ mod tests {
     fn users() {
         assert_eq!(parse_user("@BurntSushi").as_deref(), Some("BurntSushi"));
         assert_eq!(parse_user("rust-lang").as_deref(), Some("rust-lang"));
-        assert_eq!(parse_user("https://github.com/torvalds/").as_deref(), Some("torvalds"));
+        assert_eq!(
+            parse_user("https://github.com/torvalds/").as_deref(),
+            Some("torvalds")
+        );
         assert_eq!(parse_user("o/r"), None);
         assert_eq!(parse_user("git@github.com:o/r.git"), None);
     }

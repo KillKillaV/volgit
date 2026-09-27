@@ -22,17 +22,29 @@ struct Cell {
 
 impl Cell {
     fn plain(text: impl Into<String>) -> Self {
-        Self { text: text.into(), score: None, dot: None }
+        Self {
+            text: text.into(),
+            score: None,
+            dot: None,
+        }
     }
 
     fn number(n: u64) -> Self {
-        Self { text: human(n), score: Some(n as f64), dot: None }
+        Self {
+            text: human(n),
+            score: Some(n as f64),
+            dot: None,
+        }
     }
 
     /// Relative date ("3 days ago"); the more recent, the better.
     fn recent(iso: Option<&str>) -> Self {
         match iso {
-            Some(iso) => Self { text: relative(iso), score: timestamp(iso), dot: None },
+            Some(iso) => Self {
+                text: relative(iso),
+                score: timestamp(iso),
+                dot: None,
+            },
             None => Self::missing(),
         }
     }
@@ -48,7 +60,9 @@ struct Row {
 }
 
 fn timestamp(iso: &str) -> Option<f64> {
-    iso.parse::<DateTime<Utc>>().ok().map(|t| t.timestamp() as f64)
+    iso.parse::<DateTime<Utc>>()
+        .ok()
+        .map(|t| t.timestamp() as f64)
 }
 
 /// Main language with its percentage, from the (already sorted) language list.
@@ -68,28 +82,46 @@ pub fn print_repos(reports: &[Report]) {
     let headers: Vec<(String, String)> = reports
         .iter()
         .map(|r| {
-            let (owner, name) = r.repo.full_name.split_once('/').unwrap_or(("", &r.repo.full_name));
+            let (owner, name) = r
+                .repo
+                .full_name
+                .split_once('/')
+                .unwrap_or(("", &r.repo.full_name));
             (format!("{owner}/"), name.to_string())
         })
         .collect();
 
-    let row = |label, f: &dyn Fn(&Report) -> Cell| Row { label, cells: reports.iter().map(f).collect() };
+    let row = |label, f: &dyn Fn(&Report) -> Cell| Row {
+        label,
+        cells: reports.iter().map(f).collect(),
+    };
     let mut rows = vec![
         row("Stars", &|r| Cell::number(r.repo.stargazers_count)),
         row("Forks", &|r| Cell::number(r.repo.forks_count)),
-        row("Watchers", &|r| r.repo.subscribers_count.map_or_else(Cell::missing, Cell::number)),
+        row("Watchers", &|r| {
+            r.repo
+                .subscribers_count
+                .map_or_else(Cell::missing, Cell::number)
+        }),
         // open_issues_count includes PRs; subtract them when we know how many there are.
         row("Open issues", &|r| match r.open_prs {
             Some(prs) => Cell::plain(human(r.repo.open_issues_count.saturating_sub(prs))),
             None => Cell::plain(format!("{} (incl. PRs)", human(r.repo.open_issues_count))),
         }),
-        row("Open PRs", &|r| r.open_prs.map_or_else(Cell::missing, |n| Cell::plain(human(n)))),
+        row("Open PRs", &|r| {
+            r.open_prs
+                .map_or_else(Cell::missing, |n| Cell::plain(human(n)))
+        }),
         row("Last push", &|r| Cell::recent(r.repo.pushed_at.as_deref())),
         row("Last release", &|r| match &r.latest_release {
             Some(rel) => {
                 let when = rel.published_at.as_deref();
                 let age = when.map(relative).unwrap_or_default();
-                Cell { text: format!("{} · {age}", rel.tag_name), score: when.and_then(timestamp), dot: None }
+                Cell {
+                    text: format!("{} · {age}", rel.tag_name),
+                    score: when.and_then(timestamp),
+                    dot: None,
+                }
             }
             None => Cell::missing(),
         }),
@@ -97,11 +129,18 @@ pub fn print_repos(reports: &[Report]) {
         row("Language", &|r| main_language(&r.languages)),
         row("License", &|r| {
             let l = r.repo.license.as_ref();
-            Cell::plain(l.and_then(|l| l.spdx_id.clone().filter(|s| s != "NOASSERTION")).unwrap_or_else(|| "—".into()))
+            Cell::plain(
+                l.and_then(|l| l.spdx_id.clone().filter(|s| s != "NOASSERTION"))
+                    .unwrap_or_else(|| "—".into()),
+            )
         }),
         row("Size", &|r| {
             let mb = r.repo.size as f64 / 1024.0;
-            Cell::plain(if mb >= 1024.0 { format!("{:.1} GB", mb / 1024.0) } else { format!("{mb:.1} MB") })
+            Cell::plain(if mb >= 1024.0 {
+                format!("{:.1} GB", mb / 1024.0)
+            } else {
+                format!("{mb:.1} MB")
+            })
         }),
     ];
     // The status row only appears if some repo is archived or a fork.
@@ -120,10 +159,18 @@ pub fn print_repos(reports: &[Report]) {
 pub fn print_users(reports: &[UserReport]) {
     let headers: Vec<(String, String)> = reports
         .iter()
-        .map(|r| (r.user.name.clone().unwrap_or_default(), r.user.login.clone()))
+        .map(|r| {
+            (
+                r.user.name.clone().unwrap_or_default(),
+                r.user.login.clone(),
+            )
+        })
         .collect();
 
-    let row = |label, f: &dyn Fn(&UserReport) -> Cell| Row { label, cells: reports.iter().map(f).collect() };
+    let row = |label, f: &dyn Fn(&UserReport) -> Cell| Row {
+        label,
+        cells: reports.iter().map(f).collect(),
+    };
     let opt = |o: &Option<String>| match o.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(s) => Cell::plain(s),
         None => Cell::missing(),
@@ -155,8 +202,14 @@ fn print_table(headers: &[(String, String)], rows: &[Row]) {
     let widths: Vec<usize> = (0..headers.len())
         .map(|i| {
             let (sub, name) = &headers[i];
-            let cells = rows.iter().map(|r| r.cells[i].text.chars().count() + if r.cells[i].dot.is_some() { 2 } else { 0 });
-            cells.chain([sub.chars().count(), name.chars().count()]).max().unwrap_or(0).min(MAX_COL_W)
+            let cells = rows.iter().map(|r| {
+                r.cells[i].text.chars().count() + if r.cells[i].dot.is_some() { 2 } else { 0 }
+            });
+            cells
+                .chain([sub.chars().count(), name.chars().count()])
+                .max()
+                .unwrap_or(0)
+                .min(MAX_COL_W)
         })
         .collect();
 
@@ -168,7 +221,10 @@ fn print_table(headers: &[(String, String)], rows: &[Row]) {
             let max = scores.iter().cloned().fold(f64::MIN, f64::max);
             let min = scores.iter().cloned().fold(f64::MAX, f64::min);
             let useful = scores.len() >= 2 && max > min;
-            r.cells.iter().map(|c| useful && c.score == Some(max)).collect()
+            r.cells
+                .iter()
+                .map(|c| useful && c.score == Some(max))
+                .collect()
         })
         .collect();
 
@@ -190,16 +246,32 @@ fn print_table(headers: &[(String, String)], rows: &[Row]) {
         println!();
         let pad = " ".repeat(label_w);
         // Two-line header: owner (or real name) on top, repo (or login) below.
-        let line = |f: &dyn Fn(usize, usize) -> String| cols.iter().map(|&i| f(i, widths[i])).collect::<String>();
-        println!("{MARGIN}{pad}{}", line(&|i, w| cell_text(&headers[i].0, w).dimmed().to_string() + &" ".repeat(COL_GAP)).trim_end());
+        let line = |f: &dyn Fn(usize, usize) -> String| {
+            cols.iter().map(|&i| f(i, widths[i])).collect::<String>()
+        };
         println!(
             "{MARGIN}{pad}{}",
-            line(&|i, w| cell_text(&headers[i].1, w).truecolor(ar, ag, ab).bold().to_string() + &" ".repeat(COL_GAP)).trim_end()
+            line(&|i, w| cell_text(&headers[i].0, w).dimmed().to_string() + &" ".repeat(COL_GAP))
+                .trim_end()
         );
-        println!("{MARGIN}{pad}{}", line(&|_, w| "─".repeat(w).dimmed().to_string() + &" ".repeat(COL_GAP)).trim_end());
+        println!(
+            "{MARGIN}{pad}{}",
+            line(&|i, w| cell_text(&headers[i].1, w)
+                .truecolor(ar, ag, ab)
+                .bold()
+                .to_string()
+                + &" ".repeat(COL_GAP))
+            .trim_end()
+        );
+        println!(
+            "{MARGIN}{pad}{}",
+            line(&|_, w| "─".repeat(w).dimmed().to_string() + &" ".repeat(COL_GAP)).trim_end()
+        );
 
         for (r, row) in rows.iter().enumerate() {
-            let label = format!("{:<label_w$}", row.label).truecolor(ar, ag, ab).bold();
+            let label = format!("{:<label_w$}", row.label)
+                .truecolor(ar, ag, ab)
+                .bold();
             let cells = line(&|i, w| {
                 let cell = &row.cells[i];
                 // Pad the plain text first; color is applied afterwards.

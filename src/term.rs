@@ -26,7 +26,9 @@ pub fn width() -> usize {
 pub fn cell_aspect() -> f32 {
     winsize()
         .filter(|ws| ws.ws_xpixel > 0 && ws.ws_ypixel > 0)
-        .map(|ws| (ws.ws_xpixel as f32 / ws.ws_col as f32) / (ws.ws_ypixel as f32 / ws.ws_row as f32))
+        .map(|ws| {
+            (ws.ws_xpixel as f32 / ws.ws_col as f32) / (ws.ws_ypixel as f32 / ws.ws_row as f32)
+        })
         .unwrap_or(0.5)
 }
 

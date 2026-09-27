@@ -1,8 +1,8 @@
 use crate::cache::Cache;
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Local};
-use reqwest::blocking::Client;
 use reqwest::StatusCode;
+use reqwest::blocking::Client;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -199,7 +199,11 @@ impl GitHub {
         let client = Client::builder()
             .user_agent(concat!("volgit/", env!("CARGO_PKG_VERSION")))
             .build()?;
-        Ok(Self { client, token, cache })
+        Ok(Self {
+            client,
+            token,
+            cache,
+        })
     }
 
     /// GET from the API. Returns Ok(None) on 404 (e.g. a repo with no releases).
@@ -213,11 +217,16 @@ impl GitHub {
             return Ok(value);
         }
 
-        let mut req = self.client.get(&url).header("Accept", "application/vnd.github+json");
+        let mut req = self
+            .client
+            .get(&url)
+            .header("Accept", "application/vnd.github+json");
         if let Some(t) = &self.token {
             req = req.bearer_auth(t);
         }
-        let resp = req.send().with_context(|| format!("network error on {path}"))?;
+        let resp = req
+            .send()
+            .with_context(|| format!("network error on {path}"))?;
         let status = resp.status();
         if status == StatusCode::NOT_FOUND {
             self.store(&url, b"null");
@@ -233,7 +242,8 @@ impl GitHub {
         // A 403 isn't always the rate limit: GitHub also uses it e.g. when the
         // contributor list is too large. It's only the rate limit if the header
         // says no requests are left (or on a 429).
-        let header = |name: &str| -> Option<i64> { resp.headers().get(name)?.to_str().ok()?.parse().ok() };
+        let header =
+            |name: &str| -> Option<i64> { resp.headers().get(name)?.to_str().ok()?.parse().ok() };
         let remaining = header("x-ratelimit-remaining");
         let reset = header("x-ratelimit-reset");
         if status == StatusCode::TOO_MANY_REQUESTS || remaining == Some(0) {
@@ -241,7 +251,11 @@ impl GitHub {
                 .and_then(|ts| DateTime::from_timestamp(ts, 0))
                 .map(|t| format!(" (resets at {})", t.with_timezone(&Local).format("%H:%M")))
                 .unwrap_or_default();
-            let hint = if self.token.is_none() { "; export GITHUB_TOKEN to raise it to 5000/hour" } else { "" };
+            let hint = if self.token.is_none() {
+                "; export GITHUB_TOKEN to raise it to 5000/hour"
+            } else {
+                ""
+            };
             bail!("GitHub rate limit exceeded{when}{hint}");
         }
         let msg = resp
@@ -273,10 +287,19 @@ impl GitHub {
         {
             return Some(c);
         }
-        let body = serde_json::json!({ "query": CONTRIBUTIONS_QUERY, "variables": { "login": login } });
-        let resp = self.client.post(format!("{API}/graphql")).bearer_auth(token).json(&body).send().ok()?;
+        let body =
+            serde_json::json!({ "query": CONTRIBUTIONS_QUERY, "variables": { "login": login } });
+        let resp = self
+            .client
+            .post(format!("{API}/graphql"))
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .ok()?;
         let mut json: serde_json::Value = resp.json().ok()?;
-        let collection = json.pointer_mut("/data/user/contributionsCollection")?.take();
+        let collection = json
+            .pointer_mut("/data/user/contributionsCollection")?
+            .take();
         let contributions: Contributions = serde_json::from_value(collection).ok()?;
         if let Ok(bytes) = serde_json::to_vec(&contributions) {
             self.store(&key, &bytes);
@@ -304,7 +327,8 @@ impl GitHub {
             .get(&base)?
             .with_context(|| format!("repo {owner}/{name} not found (or it is private)"))?;
 
-        let langs: HashMap<String, u64> = self.get(&format!("{base}/languages"))?.unwrap_or_default();
+        let langs: HashMap<String, u64> =
+            self.get(&format!("{base}/languages"))?.unwrap_or_default();
         let mut languages: Vec<_> = langs.into_iter().collect();
         languages.sort_by(|a, b| b.1.cmp(&a.1));
 
@@ -332,7 +356,13 @@ impl GitHub {
             .flatten()
             .map(|s| s.total_count);
 
-        Ok(Report { repo, languages, contributors, latest_release, open_prs })
+        Ok(Report {
+            repo,
+            languages,
+            contributors,
+            latest_release,
+            open_prs,
+        })
     }
 
     pub fn user_report(&self, login: &str, sections: Sections) -> Result<UserReport> {
@@ -345,7 +375,9 @@ impl GitHub {
         let pages = user.public_repos.div_ceil(100).clamp(1, 5);
         for page in 1..=pages {
             let batch: Vec<UserRepo> = self
-                .get(&format!("/users/{login}/repos?per_page=100&type=owner&page={page}"))?
+                .get(&format!(
+                    "/users/{login}/repos?per_page=100&type=owner&page={page}"
+                ))?
                 .unwrap_or_default();
             repos.extend(batch);
         }
@@ -365,12 +397,23 @@ impl GitHub {
         // Activity and the contribution graph are only fetched when shown, to save
         // requests. (Repos are always fetched: stars and languages come from them.)
         let events = if sections.activity {
-            self.get(&format!("/users/{login}/events/public?per_page=30"))?.unwrap_or_default()
+            self.get(&format!("/users/{login}/events/public?per_page=30"))?
+                .unwrap_or_default()
         } else {
             vec![]
         };
-        let contributions = (sections.panel && user.kind == "User").then(|| self.contributions(login)).flatten();
+        let contributions = (sections.panel && user.kind == "User")
+            .then(|| self.contributions(login))
+            .flatten();
 
-        Ok(UserReport { user, repos, total_stars, total_forks, languages, events, contributions })
+        Ok(UserReport {
+            user,
+            repos,
+            total_stars,
+            total_forks,
+            languages,
+            events,
+            contributions,
+        })
     }
 }

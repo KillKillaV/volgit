@@ -70,7 +70,11 @@ impl Avatar {
             line += "\x1b[0m";
             lines.push(line);
         }
-        Self { lines, width, accent: accent(&img) }
+        Self {
+            lines,
+            width,
+            accent: accent(&img),
+        }
     }
 
     /// The image takes `cols` columns and as many rows as needed to look square.
@@ -85,12 +89,17 @@ impl Avatar {
         let accent = accent(&img);
 
         let mut png = Vec::new();
-        img.write_to(&mut Cursor::new(&mut png), ImageFormat::Png).ok()?;
+        img.write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
+            .ok()?;
 
         let blank = " ".repeat(cols);
         let mut lines = vec![blank.clone(); rows];
         lines[0] = format!("{}{blank}", kitty_escape(&png, cols, rows));
-        Some(Self { lines, width: cols, accent })
+        Some(Self {
+            lines,
+            width: cols,
+            accent,
+        })
     }
 }
 

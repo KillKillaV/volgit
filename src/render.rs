@@ -10,7 +10,9 @@ const BAR_W: usize = 48;
 const TEXT_W: usize = 56;
 pub(crate) const DEFAULT_ACCENT: Rgb = (122, 162, 247);
 
-const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 /// Approximate GitHub linguist colors for the most common languages.
 pub(crate) fn lang_rgb(lang: &str) -> Rgb {
@@ -42,8 +44,14 @@ pub(crate) fn lang_rgb(lang: &str) -> Rgb {
         "Other" => (110, 110, 110),
         _ => {
             // Stable color derived from the name for the rest.
-            let h = lang.bytes().fold(7u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
-            (100 + (h % 156) as u8, 100 + (h / 7 % 156) as u8, 100 + (h / 49 % 156) as u8)
+            let h = lang
+                .bytes()
+                .fold(7u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
+            (
+                100 + (h % 156) as u8,
+                100 + (h / 7 % 156) as u8,
+                100 + (h / 49 % 156) as u8,
+            )
         }
     }
 }
@@ -54,7 +62,9 @@ struct Theme {
 
 impl Theme {
     fn new(avatar: Option<&Avatar>) -> Self {
-        Self { accent: avatar.map_or(DEFAULT_ACCENT, |a| a.accent) }
+        Self {
+            accent: avatar.map_or(DEFAULT_ACCENT, |a| a.accent),
+        }
     }
 
     fn a(&self, s: &str) -> ColoredString {
@@ -80,7 +90,9 @@ pub(crate) fn human(n: u64) -> String {
 }
 
 pub(crate) fn relative(iso: &str) -> String {
-    let Ok(t) = iso.parse::<DateTime<Utc>>() else { return iso.to_string() };
+    let Ok(t) = iso.parse::<DateTime<Utc>>() else {
+        return iso.to_string();
+    };
     match (Utc::now() - t).num_days() {
         0 => "today".into(),
         1 => "yesterday".into(),
@@ -100,7 +112,9 @@ pub(crate) fn month_year(iso: &str) -> String {
 }
 
 fn short_ago(iso: &str) -> String {
-    let Ok(t) = iso.parse::<DateTime<Utc>>() else { return String::new() };
+    let Ok(t) = iso.parse::<DateTime<Utc>>() else {
+        return String::new();
+    };
     let d = Utc::now() - t;
     match (d.num_days(), d.num_hours(), d.num_minutes()) {
         (0, 0, m) => format!("{m}m"),
@@ -110,7 +124,9 @@ fn short_ago(iso: &str) -> String {
 }
 
 fn strip_scheme(url: &str) -> &str {
-    url.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/')
+    url.trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/')
 }
 
 pub(crate) fn truncate(s: &str, max: usize) -> String {
@@ -160,7 +176,11 @@ fn side_by_side(avatar: Option<&Avatar>, info: &[String]) {
 fn title_block(plain_len: usize, title: String, desc: Option<&str>) -> Vec<String> {
     let mut out = vec![title, "─".repeat(plain_len).dimmed().to_string()];
     if let Some(d) = desc.map(str::trim).filter(|d| !d.is_empty()) {
-        out.extend(wrap(d, TEXT_W, 3).into_iter().map(|l| l.italic().to_string()));
+        out.extend(
+            wrap(d, TEXT_W, 3)
+                .into_iter()
+                .map(|l| l.italic().to_string()),
+        );
     }
     out.push(String::new());
     out
@@ -192,14 +212,25 @@ pub fn print(rep: &Report, avatar: Option<&Avatar>) {
             info.push(t.kv("Issues", format!("{} open", human(issues))));
             info.push(t.kv("PRs", format!("{} open", human(prs))));
         }
-        None => info.push(t.kv("Issues", format!("{} open (incl. PRs)", human(r.open_issues_count)))),
+        None => info.push(t.kv(
+            "Issues",
+            format!("{} open (incl. PRs)", human(r.open_issues_count)),
+        )),
     }
     if let Some(rel) = &rep.latest_release {
-        let when = rel.published_at.as_deref().map(relative).unwrap_or_default();
+        let when = rel
+            .published_at
+            .as_deref()
+            .map(relative)
+            .unwrap_or_default();
         info.push(t.kv("Release", format!("{}  {}", rel.tag_name, when.dimmed())));
     }
     if let Some(l) = &r.license {
-        let id = l.spdx_id.clone().filter(|s| s != "NOASSERTION").unwrap_or(l.name.clone());
+        let id = l
+            .spdx_id
+            .clone()
+            .filter(|s| s != "NOASSERTION")
+            .unwrap_or(l.name.clone());
         info.push(t.kv("License", id));
     }
     info.push(t.kv("Branch", &r.default_branch));
@@ -213,7 +244,11 @@ pub fn print(rep: &Report, avatar: Option<&Avatar>) {
         mb => format!("{mb:.1} MB"),
     };
     info.push(t.kv("Size", size));
-    let url = r.homepage.as_deref().filter(|h| !h.is_empty()).unwrap_or(&r.html_url);
+    let url = r
+        .homepage
+        .as_deref()
+        .filter(|h| !h.is_empty())
+        .unwrap_or(&r.html_url);
     info.push(t.kv("Web", strip_scheme(url)));
 
     side_by_side(avatar, &info);
@@ -231,9 +266,17 @@ pub fn print(rep: &Report, avatar: Option<&Avatar>) {
     if !rep.contributors.is_empty() {
         t.section("Contributors");
         let max = rep.contributors[0].contributions.max(1);
-        let name_w = rep.contributors.iter().map(|c| c.login.chars().count()).max().unwrap_or(0).min(22);
+        let name_w = rep
+            .contributors
+            .iter()
+            .map(|c| c.login.chars().count())
+            .max()
+            .unwrap_or(0)
+            .min(22);
         for c in &rep.contributors {
-            let w = ((c.contributions as f64 / max as f64) * 24.0).round().max(1.0) as usize;
+            let w = ((c.contributions as f64 / max as f64) * 24.0)
+                .round()
+                .max(1.0) as usize;
             println!(
                 "{MARGIN}{:<name_w$}  {} {}",
                 truncate(&c.login, 22),
@@ -252,7 +295,12 @@ pub fn print_user(rep: &UserReport, avatar: Option<&Avatar>, top: usize, section
 
     let mut title = t.a(&u.login).bold().to_string();
     let mut plain_len = u.login.chars().count();
-    if let Some(n) = u.name.as_deref().map(str::trim).filter(|n| !n.is_empty() && *n != u.login) {
+    if let Some(n) = u
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty() && *n != u.login)
+    {
         title += &format!("  {}", n.dimmed());
         plain_len += 2 + n.chars().count();
     }
@@ -261,14 +309,30 @@ pub fn print_user(rep: &UserReport, avatar: Option<&Avatar>, top: usize, section
     let followers = if org {
         human(u.followers)
     } else {
-        format!("{}  {}", human(u.followers), format!("following {}", human(u.following)).dimmed())
+        format!(
+            "{}  {}",
+            human(u.followers),
+            format!("following {}", human(u.following)).dimmed()
+        )
     };
     info.push(t.kv("Followers", followers));
-    info.push(t.kv("Repos", format!("{}  {}", u.public_repos, format!("{} gists", u.public_gists).dimmed())));
+    info.push(t.kv(
+        "Repos",
+        format!(
+            "{}  {}",
+            u.public_repos,
+            format!("{} gists", u.public_gists).dimmed()
+        ),
+    ));
     info.push(t.kv("Stars", human(rep.total_stars)));
     info.push(t.kv("Forks", human(rep.total_forks)));
 
-    let opt = |o: &Option<String>| o.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(String::from);
+    let opt = |o: &Option<String>| {
+        o.as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+    };
     if let Some(c) = opt(&u.company) {
         info.push(t.kv("Company", c));
     }
@@ -281,7 +345,14 @@ pub fn print_user(rep: &UserReport, avatar: Option<&Avatar>, top: usize, section
     if let Some(x) = opt(&u.twitter_username) {
         info.push(t.kv("X", format!("@{x}")));
     }
-    info.push(t.kv("Joined", format!("{}  {}", month_year(&u.created_at), relative(&u.created_at).dimmed())));
+    info.push(t.kv(
+        "Joined",
+        format!(
+            "{}  {}",
+            month_year(&u.created_at),
+            relative(&u.created_at).dimmed()
+        ),
+    ));
     info.push(t.kv("Profile", strip_scheme(&u.html_url)));
 
     side_by_side(avatar, &info);
@@ -309,7 +380,12 @@ pub fn print_user(rep: &UserReport, avatar: Option<&Avatar>, top: usize, section
                 truncate(&r.name, 27).bold(),
                 format!("★ {}", human(r.stargazers_count))
             );
-            if let Some(d) = r.description.as_deref().map(str::trim).filter(|d| !d.is_empty()) {
+            if let Some(d) = r
+                .description
+                .as_deref()
+                .map(str::trim)
+                .filter(|d| !d.is_empty())
+            {
                 println!("{MARGIN}  {}", truncate(d, TEXT_W + 10).dimmed());
             }
         }
@@ -322,7 +398,13 @@ pub fn print_user(rep: &UserReport, avatar: Option<&Avatar>, top: usize, section
 }
 
 /// GitHub dark-mode colors, from "no contributions" to "most".
-const CAL_LEVELS: [Rgb; 5] = [(45, 51, 59), (14, 68, 41), (0, 109, 50), (38, 166, 65), (57, 211, 83)];
+const CAL_LEVELS: [Rgb; 5] = [
+    (45, 51, 59),
+    (14, 68, 41),
+    (0, 109, 50),
+    (38, 166, 65),
+    (57, 211, 83),
+];
 const CAL_LABEL_W: usize = 4;
 
 fn level_index(level: &str) -> usize {
@@ -369,7 +451,11 @@ fn calendar(t: &Theme, c: &Contributions) {
     println!(
         "\n{MARGIN}{}{}{}",
         t.a("Contributions").bold(),
-        " ".repeat(grid_w.saturating_sub("Contributions".len() + total.chars().count()).max(2)),
+        " ".repeat(
+            grid_w
+                .saturating_sub("Contributions".len() + total.chars().count())
+                .max(2)
+        ),
         total.dimmed()
     );
 
@@ -377,8 +463,12 @@ fn calendar(t: &Theme, c: &Contributions) {
     let mut starts: Vec<(usize, &str)> = vec![]; // (week, month)
     let mut last_month = None;
     for (i, week) in weeks.iter().enumerate() {
-        let Some(first) = week.contribution_days.first() else { continue };
-        let Ok(date) = NaiveDate::parse_from_str(&first.date, "%Y-%m-%d") else { continue };
+        let Some(first) = week.contribution_days.first() else {
+            continue;
+        };
+        let Ok(date) = NaiveDate::parse_from_str(&first.date, "%Y-%m-%d") else {
+            continue;
+        };
         if last_month != Some(date.month0()) {
             last_month = Some(date.month0());
             starts.push((i, MONTHS[date.month0() as usize]));
@@ -432,7 +522,11 @@ fn calendar(t: &Theme, c: &Contributions) {
         .iter()
         .map(|(name, n)| (name.to_string(), share(*n, sum)))
         .collect();
-    let breakdown_len: usize = parts.iter().map(|(n, p)| n.len() + 1 + p.len()).sum::<usize>() + parts.len().saturating_sub(1) * 5;
+    let breakdown_len: usize = parts
+        .iter()
+        .map(|(n, p)| n.len() + 1 + p.len())
+        .sum::<usize>()
+        + parts.len().saturating_sub(1) * 5;
     let breakdown = parts
         .iter()
         .map(|(n, p)| format!("{} {p}", n.dimmed()))
@@ -442,7 +536,9 @@ fn calendar(t: &Theme, c: &Contributions) {
     let legend = format!(
         "{} {}{}",
         "Less".dimmed(),
-        (0..5).map(|l| format!("{} ", square(l))).collect::<String>(),
+        (0..5)
+            .map(|l| format!("{} ", square(l)))
+            .collect::<String>(),
         "More".dimmed()
     );
     let legend_len = "Less ".len() + 5 * 2 + "More".len();
@@ -450,7 +546,11 @@ fn calendar(t: &Theme, c: &Contributions) {
     let space = grid_w.saturating_sub(CAL_LABEL_W + breakdown_len + legend_len);
     println!();
     if space >= 3 {
-        println!("{MARGIN}{}{breakdown}{}{legend}", " ".repeat(CAL_LABEL_W), " ".repeat(space));
+        println!(
+            "{MARGIN}{}{breakdown}{}{legend}",
+            " ".repeat(CAL_LABEL_W),
+            " ".repeat(space)
+        );
     } else {
         // Narrow terminal: one below the other.
         println!("{MARGIN}{}{breakdown}", " ".repeat(CAL_LABEL_W));
@@ -479,7 +579,10 @@ fn share(n: u64, total: u64) -> String {
 /// `total` and giving each value at least 1 column (largest remainder method).
 fn distribute(values: &[u64], total: usize) -> Vec<usize> {
     let sum: u64 = values.iter().sum();
-    let exact: Vec<f64> = values.iter().map(|&v| v as f64 * total as f64 / sum as f64).collect();
+    let exact: Vec<f64> = values
+        .iter()
+        .map(|&v| v as f64 * total as f64 / sum as f64)
+        .collect();
     let mut out: Vec<usize> = exact.iter().map(|e| (e.floor() as usize).max(1)).collect();
     let mut used: usize = out.iter().sum();
 
@@ -495,7 +598,12 @@ fn distribute(values: &[u64], total: usize) -> Vec<usize> {
     }
     // The minimum of 1 overshot: take columns back from the widest.
     while used > total {
-        let Some(i) = (0..out.len()).filter(|&i| out[i] > 1).max_by_key(|&i| out[i]) else { break };
+        let Some(i) = (0..out.len())
+            .filter(|&i| out[i] > 1)
+            .max_by_key(|&i| out[i])
+        else {
+            break;
+        };
         out[i] -= 1;
         used -= 1;
     }
@@ -540,7 +648,12 @@ fn languages(t: &Theme, title: &str, langs: &[(String, u64)]) {
             let pct = format!("{:.1}%", *n as f64 * 100.0 / total as f64);
             // Padding is computed on the plain text so ANSI codes aren't counted.
             let pad = 22usize.saturating_sub(name.chars().count() + pct.len() + 3);
-            format!("{} {name} {}{}", "●".truecolor(r, g, b), pct.dimmed(), " ".repeat(pad))
+            format!(
+                "{} {name} {}{}",
+                "●".truecolor(r, g, b),
+                pct.dimmed(),
+                " ".repeat(pad)
+            )
         })
         .collect();
     for row in cells.chunks(3) {
@@ -554,13 +667,22 @@ fn describe(e: &Event) -> Option<(&'static str, String)> {
     let action = p["action"].as_str().unwrap_or("");
     let s = |v: &serde_json::Value| v.as_str().unwrap_or("").to_string();
     Some(match e.kind.as_str() {
-        "PushEvent" => ("push", s(&p["ref"]).trim_start_matches("refs/heads/").to_string()),
+        "PushEvent" => (
+            "push",
+            s(&p["ref"]).trim_start_matches("refs/heads/").to_string(),
+        ),
         "PullRequestEvent" => {
             let merged = action == "closed" && p["pull_request"]["merged"].as_bool() == Some(true);
             let tag = if merged { "merge" } else { "pr" };
-            (tag, with_verb(verb(action, merged), &title(&p["pull_request"], p)))
+            (
+                tag,
+                with_verb(verb(action, merged), &title(&p["pull_request"], p)),
+            )
         }
-        "IssuesEvent" => ("issue", with_verb(verb(action, false), &title(&p["issue"], p))),
+        "IssuesEvent" => (
+            "issue",
+            with_verb(verb(action, false), &title(&p["issue"], p)),
+        ),
         "IssueCommentEvent" => ("comment", title(&p["issue"], p)),
         "PullRequestReviewEvent" => ("review", title(&p["pull_request"], p)),
         "PullRequestReviewCommentEvent" => ("review", title(&p["pull_request"], p)),
@@ -625,8 +747,13 @@ fn activity(t: &Theme, events: &[Event], max: usize) {
     // Merge identical consecutive events (e.g. 5 pushes to the same branch) into one "×5" line.
     let mut rows: Vec<(&Event, &str, String, usize)> = vec![];
     for e in events {
-        let Some((tag, detail)) = describe(e) else { continue };
-        if let Some(last) = rows.last_mut().filter(|l| l.1 == tag && l.0.repo.name == e.repo.name && l.2 == detail) {
+        let Some((tag, detail)) = describe(e) else {
+            continue;
+        };
+        if let Some(last) = rows
+            .last_mut()
+            .filter(|l| l.1 == tag && l.0.repo.name == e.repo.name && l.2 == detail)
+        {
             last.3 += 1;
             continue;
         }
@@ -638,7 +765,11 @@ fn activity(t: &Theme, events: &[Event], max: usize) {
 
     t.section("Recent activity");
     for (e, tag, detail, n) in rows.into_iter().take(max) {
-        let times = if n > 1 { format!(" ×{n}") } else { String::new() };
+        let times = if n > 1 {
+            format!(" ×{n}")
+        } else {
+            String::new()
+        };
         let detail = truncate(&detail, 48);
         println!(
             "{MARGIN}{:>4}  {}{}{}  {}",
@@ -657,7 +788,12 @@ mod tests {
 
     #[test]
     fn distribute_sums_exactly() {
-        for values in [vec![955, 41, 4], vec![1, 1, 1], vec![100, 1, 1, 1, 1, 1, 1], vec![7]] {
+        for values in [
+            vec![955, 41, 4],
+            vec![1, 1, 1],
+            vec![100, 1, 1, 1, 1, 1, 1],
+            vec![7],
+        ] {
             let out = distribute(&values, BAR_W);
             assert_eq!(out.iter().sum::<usize>(), BAR_W, "{values:?} -> {out:?}");
             assert!(out.iter().all(|&w| w >= 1));
