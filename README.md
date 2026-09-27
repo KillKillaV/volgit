@@ -28,13 +28,9 @@
 
 It is inspired by [onefetch](https://github.com/o2sh/onefetch), but where onefetch reads a Git repository on your disk, volgit talks to the GitHub API. You can look up **any** public repo or profile without cloning anything, and **compare** several of them side by side.
 
-<p align="center">
-  <img src="assets/screenshot-panel.png" width="100%" alt="User profile with contribution graph and top repos">
-</p>
-
-|                                                                  |                                                        |
-| ---------------------------------------------------------------- | ------------------------------------------------------ |
-| ![Repository card for spicetify/cli](assets/screenshot-repo.png) | ![Comparing two users side by side](assets/screenshot-compare.png) |
+|                                                                  |                                                                               |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| ![Repository card for spicetify/cli](assets/screenshot-repo.png) | ![Profile with contribution graph and top repos](assets/screenshot-panel.png) |
 
 ## Features
 
@@ -81,6 +77,8 @@ Pass several repositories (or several users) and volgit prints them as columns, 
 volgit tokio-rs/tokio async-rs/async-std smol-rs/smol
 volgit @BurntSushi @sharkdp @dtolnay
 ```
+
+![Comparing two users side by side](assets/screenshot-compare.png)
 
 ### And also
 
