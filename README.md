@@ -9,9 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange?logo=rust)](https://www.rust-lang.org)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey?logo=linux&logoColor=white)](#installation)
-<!-- Once the repo is public and has a release:
 [![Release](https://img.shields.io/github/v/release/KillKillaV/volgit?logo=github)](https://github.com/KillKillaV/volgit/releases)
--->
 <!-- Once published on crates.io:
 [![Crates.io](https://img.shields.io/crates/v/volgit)](https://crates.io/crates/volgit)
 -->
