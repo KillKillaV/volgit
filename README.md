@@ -1,6 +1,6 @@
 <div align="center">
 
-<!-- TODO: logo / sticker. Example: <img src="assets/logo.png" height="120" alt="volgit logo"> -->
+<img src="assets/logo.png" height="130" alt="volgit logo">
 
 # volgit
 
