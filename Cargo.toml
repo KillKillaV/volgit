@@ -2,6 +2,7 @@
 name = "volgit"
 version = "0.2.0"
 edition = "2024"
+rust-version = "1.88"
 license = "MIT"
 description = "Look up GitHub repositories, users and organizations from the terminal"
 

@@ -97,7 +97,7 @@ volgit runs on **Linux**. macOS should work but hasn't been tested yet. Windows 
 
 ### With Cargo
 
-If you have a [Rust toolchain](https://rustup.rs):
+Building needs [Rust](https://rustup.rs) 1.88 or newer and a C compiler (`gcc` or `clang`; on Debian/Ubuntu: `sudo apt install build-essential`).
 
 ```sh
 cargo install --git https://github.com/KillKillaV/volgit
@@ -120,6 +120,8 @@ mv volgit-v0.2.0-x86_64-linux/volgit ~/.local/bin/
 ```
 
 ### From source
+
+Same requirements as [with Cargo](#with-cargo).
 
 ```sh
 git clone https://github.com/KillKillaV/volgit
