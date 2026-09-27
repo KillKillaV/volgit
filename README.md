@@ -29,11 +29,9 @@
 
 It is inspired by [onefetch](https://github.com/o2sh/onefetch), but where onefetch reads a Git repository on your disk, volgit talks to the GitHub API. You can look up **any** public repo or profile without cloning anything, and **compare** several of them side by side.
 
-<!-- TODO: screenshots. Put the images in an assets/ folder and replace these paths. -->
-|                                              |                                              |
-| -------------------------------------------- | -------------------------------------------- |
-| ![Repository card](assets/screenshot-repo.png) | ![User profile](assets/screenshot-user.png) |
-| ![Contribution graph](assets/screenshot-panel.png) | ![Comparison](assets/screenshot-compare.png) |
+|                                                      |                                                 |
+| ---------------------------------------------------- | ----------------------------------------------- |
+| ![Repository card for spicetify/cli](assets/screenshot-repo.png) | ![User profile of torvalds](assets/screenshot-user.png) |
 
 ## Features
 
@@ -45,8 +43,6 @@ Stars, forks, watchers, open issues and pull requests (counted separately, which
 volgit sharkdp/bat
 ```
 
-<!-- TODO: screenshot -->
-
 ### User and organization profiles
 
 Followers, total stars across their repos, company, location, main languages… Add their top repositories with `--repos` and what they have been up to lately with `--activity`.
@@ -54,8 +50,6 @@ Followers, total stars across their repos, company, location, main languages… 
 ```sh
 volgit @BurntSushi --repos --activity
 ```
-
-<!-- TODO: screenshot -->
 
 ### Real avatars in kitty, Ghostty and WezTerm
 
