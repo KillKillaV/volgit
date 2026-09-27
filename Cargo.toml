@@ -1,6 +1,6 @@
 [package]
 name = "volgit"
-version = "0.1.5"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 description = "Look up GitHub repositories, users and organizations from the terminal"
@@ -18,3 +18,8 @@ reqwest = { version = "0.13.5", default-features = false, features = ["blocking"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 toml = "1.1.6"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
