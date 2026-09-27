@@ -111,12 +111,12 @@ cargo install volgit
 
 ### Prebuilt binaries
 
-<!-- TODO: once there are releases with binaries -->
-Download the binary for your platform from the [releases page](https://github.com/KillKillaV/volgit/releases), make it executable and put it somewhere in your `PATH`:
+Each [release](https://github.com/KillKillaV/volgit/releases) includes a static Linux binary (x86-64) that runs on any distribution, with no dependencies:
 
 ```sh
-chmod +x volgit
-mv volgit ~/.local/bin/
+curl -LO https://github.com/KillKillaV/volgit/releases/download/v0.2.0/volgit-v0.2.0-x86_64-linux.tar.gz
+tar -xzf volgit-v0.2.0-x86_64-linux.tar.gz
+mv volgit-v0.2.0-x86_64-linux/volgit ~/.local/bin/
 ```
 
 ### From source
