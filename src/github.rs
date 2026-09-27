@@ -330,7 +330,7 @@ impl GitHub {
         let langs: HashMap<String, u64> =
             self.get(&format!("{base}/languages"))?.unwrap_or_default();
         let mut languages: Vec<_> = langs.into_iter().collect();
-        languages.sort_by(|a, b| b.1.cmp(&a.1));
+        languages.sort_by_key(|l| std::cmp::Reverse(l.1));
 
         // For huge repos (e.g. torvalds/linux) GitHub refuses to list contributors;
         // the section is simply left out. With top = 0 (comparison mode doesn't
@@ -382,7 +382,7 @@ impl GitHub {
             repos.extend(batch);
         }
         repos.retain(|r| !r.fork);
-        repos.sort_by(|a, b| b.stargazers_count.cmp(&a.stargazers_count));
+        repos.sort_by_key(|r| std::cmp::Reverse(r.stargazers_count));
 
         let total_stars = repos.iter().map(|r| r.stargazers_count).sum();
         let total_forks = repos.iter().map(|r| r.forks_count).sum();

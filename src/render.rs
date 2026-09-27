@@ -427,7 +427,7 @@ fn thousands(n: u64) -> String {
     let digits = n.to_string();
     let mut out = String::new();
     for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
@@ -517,7 +517,7 @@ fn calendar(t: &Theme, c: &Contributions) {
     ];
     let sum: u64 = kinds.iter().map(|k| k.1).sum();
     let mut kinds: Vec<_> = kinds.into_iter().filter(|k| k.1 > 0).collect();
-    kinds.sort_by(|a, b| b.1.cmp(&a.1));
+    kinds.sort_by_key(|k| std::cmp::Reverse(k.1));
     let parts: Vec<(String, String)> = kinds
         .iter()
         .map(|(name, n)| (name.to_string(), share(*n, sum)))

@@ -4,7 +4,12 @@ version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
-description = "Look up GitHub repositories, users and organizations from the terminal"
+description = "A fetch-style CLI for GitHub: repo cards, profiles, contribution graphs and side-by-side comparisons, right in your terminal"
+repository = "https://github.com/KillKillaV/volgit"
+readme = "README.md"
+keywords = ["github", "cli", "terminal", "fetch", "git"]
+categories = ["command-line-utilities"]
+exclude = ["assets/"]
 
 [dependencies]
 anyhow = "1.0.104"
