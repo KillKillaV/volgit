@@ -6,9 +6,12 @@
 
 **GitHub repositories, users and organizations, right in your terminal.**
 
-[![License](https://img.shields.io/github/license/KillKillaV/volgit)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange?logo=rust)](https://www.rust-lang.org)
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey?logo=linux&logoColor=white)](#installation)
+<!-- Once the repo is public and has a release:
 [![Release](https://img.shields.io/github/v/release/KillKillaV/volgit?logo=github)](https://github.com/KillKillaV/volgit/releases)
-[![Top language](https://img.shields.io/github/languages/top/KillKillaV/volgit?logo=rust&label=)](https://github.com/KillKillaV/volgit)
+-->
 <!-- Once published on crates.io:
 [![Crates.io](https://img.shields.io/crates/v/volgit)](https://crates.io/crates/volgit)
 -->
@@ -32,6 +35,7 @@ It is inspired by [onefetch](https://github.com/o2sh/onefetch), but where onefet
 |                                                      |                                                 |
 | ---------------------------------------------------- | ----------------------------------------------- |
 | ![Repository card for spicetify/cli](assets/screenshot-repo.png) | ![User profile of torvalds](assets/screenshot-user.png) |
+| ![Profile with contribution graph and top repos](assets/screenshot-panel.png) | ![Comparing two users side by side](assets/screenshot-compare.png) |
 
 ## Features
 
@@ -70,8 +74,6 @@ volgit @BurntSushi --panel
 > [!NOTE]
 > The contribution graph is only available through GitHub's GraphQL API, which requires a [token](#github-token).
 
-<!-- TODO: screenshot -->
-
 ### Compare side by side
 
 Pass several repositories (or several users) and volgit prints them as columns, with the best value of each row highlighted. Useful when choosing between libraries: you can tell at a glance which one is alive and which one hasn't had a release in two years. They are fetched in parallel, so comparing three takes about as long as looking up one.
@@ -80,8 +82,6 @@ Pass several repositories (or several users) and volgit prints them as columns, 
 volgit tokio-rs/tokio async-rs/async-std smol-rs/smol
 volgit @BurntSushi @sharkdp @dtolnay
 ```
-
-<!-- TODO: screenshot -->
 
 ### And also
 
