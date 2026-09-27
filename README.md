@@ -10,9 +10,7 @@
 [![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange?logo=rust)](https://www.rust-lang.org)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey?logo=linux&logoColor=white)](#installation)
 [![Release](https://img.shields.io/github/v/release/KillKillaV/volgit?logo=github)](https://github.com/KillKillaV/volgit/releases)
-<!-- Once published on crates.io:
 [![Crates.io](https://img.shields.io/crates/v/volgit)](https://crates.io/crates/volgit)
--->
 
 <h3>
 <a href="#features">Features</a> •
@@ -98,14 +96,14 @@ volgit runs on **Linux**. macOS should work but hasn't been tested yet. Windows 
 Building needs [Rust](https://rustup.rs) 1.88 or newer and a C compiler (`gcc` or `clang`; on Debian/Ubuntu: `sudo apt install build-essential`).
 
 ```sh
-cargo install --git https://github.com/KillKillaV/volgit
-```
-
-<!-- Once published on crates.io:
-```sh
 cargo install volgit
 ```
--->
+
+To get the latest unreleased changes instead, install straight from GitHub:
+
+```sh
+cargo install --git https://github.com/KillKillaV/volgit
+```
 
 ### Prebuilt binaries
 
