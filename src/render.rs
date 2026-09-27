@@ -430,7 +430,7 @@ fn calendar(t: &Theme, c: &Contributions) {
     kinds.sort_by(|a, b| b.1.cmp(&a.1));
     let parts: Vec<(String, String)> = kinds
         .iter()
-        .map(|(name, n)| (name.to_string(), format!("{}%", (*n as f64 * 100.0 / sum as f64).round())))
+        .map(|(name, n)| (name.to_string(), share(*n, sum)))
         .collect();
     let breakdown_len: usize = parts.iter().map(|(n, p)| n.len() + 1 + p.len()).sum::<usize>() + parts.len().saturating_sub(1) * 5;
     let breakdown = parts
@@ -455,6 +455,23 @@ fn calendar(t: &Theme, c: &Contributions) {
         // Narrow terminal: one below the other.
         println!("{MARGIN}{}{breakdown}", " ".repeat(CAL_LABEL_W));
         println!("{MARGIN}{}{legend}", " ".repeat(CAL_LABEL_W));
+    }
+}
+
+/// Percentage of `n` over `total`, rounded but never misleading: a small
+/// non-zero share shows "<1%" instead of "0%", and an almost-total share shows
+/// ">99%" instead of "100%" when something else is left.
+fn share(n: u64, total: u64) -> String {
+    if total == 0 || n == 0 {
+        return "0%".into();
+    }
+    if n == total {
+        return "100%".into();
+    }
+    match n as f64 * 100.0 / total as f64 {
+        p if p < 1.0 => "<1%".into(),
+        p if p > 99.0 => ">99%".into(),
+        p => format!("{}%", p.round()),
     }
 }
 
@@ -645,6 +662,15 @@ mod tests {
             assert_eq!(out.iter().sum::<usize>(), BAR_W, "{values:?} -> {out:?}");
             assert!(out.iter().all(|&w| w >= 1));
         }
+    }
+
+    #[test]
+    fn share_never_misleads() {
+        assert_eq!(share(3800, 3802), ">99%");
+        assert_eq!(share(1, 3802), "<1%");
+        assert_eq!(share(5, 5), "100%");
+        assert_eq!(share(64, 100), "64%");
+        assert_eq!(share(0, 10), "0%");
     }
 
     #[test]
